@@ -371,6 +371,85 @@ describe('gameReducer claims', () => {
       }
     }
   });
+
+  it('processes ankan from the current player hand', () => {
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([m(1), m(1), m(1), m(1), m(2), m(3), m(4), p(2), p(3), p(4), s(2), s(3), s(4), p(5)]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterKan = gameReducer(state, { type: 'ANKAN', player: 0, tile: m(1) });
+
+    expect(afterKan.currentPlayer).toBe(0);
+    expect(afterKan.players[0].hand.filter(tile => tile.suit === Suit.Man && tile.value === 1)).toHaveLength(0);
+    expect(afterKan.players[0].melds.at(-1)?.type).toBe(MeldType.ClosedKan);
+    expect(afterKan.players[0].melds.at(-1)?.tiles).toHaveLength(4);
+    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount + 1);
+  });
+
+  it('does not allow ankan while in riichi', () => {
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer([m(1), m(1), m(1), m(1), m(2), m(3), m(4), p(2), p(3), p(4), s(2), s(3), s(4), p(5)]), riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterKan = gameReducer(state, { type: 'ANKAN', player: 0, tile: m(1) });
+
+    expect(afterKan.players[0].melds).toHaveLength(0);
+    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount);
+    expect(afterKan.message).toContain('リーチ中');
+  });
+
+  it('processes kakan by upgrading an existing pon meld', () => {
+    const ponMeld = { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) };
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer([m(2), m(3), m(4), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]), melds: [ponMeld] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterKan = gameReducer(state, { type: 'KAKAN', player: 0, tile: m(2) });
+
+    expect(afterKan.currentPlayer).toBe(0);
+    expect(afterKan.players[0].hand.some(tile => tile.suit === Suit.Man && tile.value === 2)).toBe(false);
+    expect(afterKan.players[0].melds).toHaveLength(1);
+    expect(afterKan.players[0].melds[0]?.type).toBe(MeldType.AddedKan);
+    expect(afterKan.players[0].melds[0]?.tiles).toHaveLength(4);
+    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount + 1);
+  });
+
+  it('does not allow kakan while in riichi', () => {
+    const ponMeld = { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) };
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer([m(2), m(3), m(4), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]), melds: [ponMeld], riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterKan = gameReducer(state, { type: 'KAKAN', player: 0, tile: m(2) });
+
+    expect(afterKan.players[0].melds[0]?.type).toBe(MeldType.Poon);
+    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount);
+    expect(afterKan.message).toContain('リーチ中');
+  });
 });
 
 describe('east-only match progression', () => {
@@ -577,6 +656,7 @@ describe('claiming turn ownership', () => {
     expect(afterKan.currentPlayer).toBe(0);
     expect(afterKan.players[0].melds).toHaveLength(1);
     expect(afterKan.players[2].melds).toHaveLength(0);
+    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount + 1);
   });
 });
 

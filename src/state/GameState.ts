@@ -77,6 +77,8 @@ export type GameAction =
   | { type: 'CHI'; player: number; optionIndex: number }
   | { type: 'PON'; player: number }
   | { type: 'DAIMINKAN'; player: number }
+  | { type: 'ANKAN'; player: number; tile: Tile }
+  | { type: 'KAKAN'; player: number; tile: Tile }
   | { type: 'PASS_CLAIM' }
   | { type: 'RON'; winner: number }
   | { type: 'TSUMO'; player: number }
@@ -88,6 +90,10 @@ export type GameAction =
 
 function isSameTile(a: Tile, b: Tile): boolean {
   return a.suit === b.suit && a.value === b.value && (a.red ?? false) === (b.red ?? false);
+}
+
+function isSameTileKind(a: Tile, b: Tile): boolean {
+  return a.suit === b.suit && a.value === b.value;
 }
 
 function makePlayer(wind: number, points: number): PlayerData {
@@ -105,6 +111,21 @@ function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
   const idx = hand.findIndex(t => isSameTile(t, tile));
   if (idx === -1) return [...hand];
   return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
+}
+
+function removeTileKind(hand: readonly Tile[], tile: Tile, count: number): Tile[] {
+  let remaining = count;
+  return hand.filter(t => {
+    if (remaining > 0 && isSameTileKind(t, tile)) {
+      remaining--;
+      return false;
+    }
+    return true;
+  });
+}
+
+function matchingTileKind(hand: readonly Tile[], tile: Tile): Tile[] {
+  return hand.filter(t => isSameTileKind(t, tile));
 }
 
 function turnTileCount(player: PlayerData): number {
@@ -127,6 +148,13 @@ const doraParams = (state: GameState) => ({
   doraIndicators: getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
   uraDoraIndicators: getUraDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
 });
+
+function revealKanDora(deadWall: DeadWallState): DeadWallState {
+  return {
+    ...deadWall,
+    doraCount: Math.min(deadWall.doraCount + 1, 5, deadWall.tiles.length),
+  };
+}
 
 function playerWind(player: number, dealer: number): Wind {
   return ((player - dealer + 4) % 4) as Wind;
@@ -622,8 +650,70 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...state,
         players: newPlayers,
+        deadWall: revealKanDora(state.deadWall),
         currentPlayer: option.player, phase: 'playing', claimOptions: [],
         message: `カン！ ${formatTile(option.calledTile)}`,
+      };
+    }
+
+    case 'ANKAN': {
+      const player = state.players[action.player];
+      if (player.riichi) return { ...state, message: '暗槓できません (リーチ中)' };
+      const tiles = matchingTileKind(player.hand, action.tile);
+      if (tiles.length < 4) return { ...state, message: '暗槓できません' };
+
+      const meld: Meld = { type: MeldType.ClosedKan, tiles: tiles.slice(0, 4) };
+      const updatedPlayer = updPlayer(player, {
+        hand: sortHand(removeTileKind(player.hand, action.tile, 4)),
+        melds: [...player.melds, meld],
+      });
+
+      return {
+        ...state,
+        players: updatePlayerInTuple(state.players, action.player, updatedPlayer),
+        deadWall: revealKanDora(state.deadWall),
+        currentPlayer: action.player,
+        phase: 'playing',
+        claimOptions: [],
+        message: `暗槓！ ${formatTile(action.tile)}`,
+      };
+    }
+
+    case 'KAKAN': {
+      const player = state.players[action.player];
+      if (player.riichi) return { ...state, message: '加槓できません (リーチ中)' };
+      const meldIndex = player.melds.findIndex(meld => (
+        meld.type === MeldType.Poon &&
+        meld.tiles.some(tile => isSameTileKind(tile, action.tile))
+      ));
+      if (meldIndex === -1 || !player.hand.some(tile => isSameTile(tile, action.tile))) {
+        return { ...state, message: '加槓できません' };
+      }
+
+      const meld = player.melds[meldIndex]!;
+      const upgradedMeld: Meld = {
+        type: MeldType.AddedKan,
+        tiles: [...meld.tiles, action.tile],
+        ...(meld.calledTile ? { calledTile: meld.calledTile } : {}),
+      };
+      const melds = [
+        ...player.melds.slice(0, meldIndex),
+        upgradedMeld,
+        ...player.melds.slice(meldIndex + 1),
+      ];
+      const updatedPlayer = updPlayer(player, {
+        hand: sortHand(removeOneTile(player.hand, action.tile)),
+        melds,
+      });
+
+      return {
+        ...state,
+        players: updatePlayerInTuple(state.players, action.player, updatedPlayer),
+        deadWall: revealKanDora(state.deadWall),
+        currentPlayer: action.player,
+        phase: 'playing',
+        claimOptions: [],
+        message: `加槓！ ${formatTile(action.tile)}`,
       };
     }
 

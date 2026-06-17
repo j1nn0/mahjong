@@ -5,7 +5,7 @@ import { saveGame, loadGame, clearSave } from '../state/persistence.js';
 import type { ClaimOption, GameAction, GameState } from '../state/GameState.js';
 import { formatTile, tileToUnicode } from '../game/tiles.js';
 import { isWinningHand, tilesToCounts } from '../game/agari.js';
-import { type Meld, type Tile, Suit } from '../game/types.js';
+import { type Meld, MeldType, type Tile, Suit } from '../game/types.js';
 
 // ── Color helpers ──────────────────────────────────────────────────
 
@@ -146,15 +146,17 @@ const ClaimMenu: React.FC<ClaimMenuProps> = ({ options, selectedIndex }) => {
 interface ActionBarProps {
   canTsumo: boolean;
   canRiichi: boolean;
+  canKan: boolean;
   message: string;
 }
 
-const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, message }) => {
+const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, message }) => {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
         {canTsumo && <Text color="green"> [T]ツモ </Text>}
         {canRiichi && <Text color="yellow"> [R]リーチ </Text>}
+        {canKan && <Text color="cyan"> [K]カン </Text>}
       </Box>
       <Box marginTop={1}><Text dimColor>{'← →: 選択  Enter: 打牌'}</Text></Box>
       <Box marginTop={1}><Text>{message}</Text></Box>
@@ -168,6 +170,7 @@ const WIND_NAMES = ['東', '南', '西', '北'];
 const roundName = (roundNumber: number) => `東${roundNumber}局`;
 const turnTileCount = (player: GameState['players'][number]) =>
   player.hand.length + player.melds.reduce((sum, meld) => sum + meld.tiles.length, 0);
+const tileKindKey = (tile: Tile) => `${tile.suit}:${tile.value}`;
 
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
@@ -256,6 +259,22 @@ const App: React.FC = () => {
     const p = state.players[0];
     return !p.riichi && p.points >= 1000;
   })();
+  const humanCanAnkan = (() => {
+    if (state.phase !== 'playing' || state.currentPlayer !== 0 || state.players[0].riichi) return false;
+    const tile = hand[selectedIndex];
+    if (!tile) return false;
+    return hand.filter(t => tileKindKey(t) === tileKindKey(tile)).length >= 4;
+  })();
+  const humanCanKakan = (() => {
+    if (state.phase !== 'playing' || state.currentPlayer !== 0 || state.players[0].riichi) return false;
+    const tile = hand[selectedIndex];
+    if (!tile) return false;
+    return state.players[0].melds.some(meld => (
+      meld.type === MeldType.Poon &&
+      meld.tiles.some(meldTile => tileKindKey(meldTile) === tileKindKey(tile))
+    ));
+  })();
+  const humanCanKan = humanCanAnkan || humanCanKakan;
 
   // Keyboard input
   useInput((input, key) => {
@@ -372,6 +391,12 @@ const App: React.FC = () => {
 
     if (input === 'r' && humanCanRiichi) {
       dispatch({ type: 'DECLARE_RIICHI', player: 0, discardTile: hand[selectedIndex]! });
+      return;
+    }
+
+    if (input === 'k') {
+      if (hand.length === 0) return;
+      dispatch({ type: humanCanKakan ? 'KAKAN' : 'ANKAN', player: 0, tile: hand[selectedIndex]! });
       return;
     }
 
@@ -555,7 +580,7 @@ const App: React.FC = () => {
         <MeldView melds={state.players[0].melds} />
       </Box>
       <HandView tiles={hand} selectedIndex={selectedIndex} riichi={state.players[0].riichi} isHuman={true} />
-      <ActionBar canTsumo={humanCanTsumo} canRiichi={humanCanRiichi} message={state.message} />
+      <ActionBar canTsumo={humanCanTsumo} canRiichi={humanCanRiichi} canKan={humanCanKan} message={state.message} />
     </Box>
   );
 };
