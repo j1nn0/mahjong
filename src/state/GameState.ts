@@ -252,22 +252,29 @@ export function processAiTurn(state: GameState): { state: GameState; action: Gam
     }
     return { state, action: { type: 'PASS_CLAIM' } };
   }
-
   const player = state.players[state.currentPlayer];
-  if (player.hand.length === 13) {
-    const drawAction: GameAction = { type: 'DRAW', player: state.currentPlayer };
-    const afterDraw = gameReducer(state, drawAction);
-    const p = afterDraw.players[state.currentPlayer];
 
-    if (isWinningHand(tilesToCounts(p.hand))) {
-      return { state: afterDraw, action: { type: 'TSUMO', player: state.currentPlayer } };
+  // Always draw before discarding: normal (13) and post-claim (<13)
+  if (player.hand.length > 0 && player.hand.length <= 13) {
+    const afterDraw = gameReducer(state, { type: 'DRAW', player: state.currentPlayer });
+    if (afterDraw.phase === 'ended') {
+      return { state: afterDraw, action: null };
     }
+    const p = afterDraw.players[state.currentPlayer];
 
     const opponentDiscards = afterDraw.players.map(p => p.discards);
     const opponentRiichi = afterDraw.players.map(p => p.riichi);
+
+    // Tsumo check: only for 13-hand normal turns
+    if (player.hand.length === 13 && isWinningHand(tilesToCounts(p.hand))) {
+      return { state: afterDraw, action: { type: 'TSUMO', player: state.currentPlayer } };
+    }
+
     const discard = aiChooseDiscard(p.hand, opponentDiscards, opponentRiichi);
     const testHand = removeOneTile(p.hand, discard);
-    if (!p.riichi && findTenpaiTiles(testHand).length > 0 && p.points >= 1000) {
+
+    // Riichi: only for 13-hand closed turns
+    if (player.hand.length === 13 && !p.riichi && findTenpaiTiles(testHand).length > 0 && p.points >= 1000) {
       return { state: afterDraw, action: { type: 'DECLARE_RIICHI', player: state.currentPlayer, discardTile: discard } };
     }
     return { state: afterDraw, action: { type: 'DISCARD', player: state.currentPlayer, tile: discard } };
@@ -432,11 +439,23 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       let newHand = [...player.hand];
       for (const t of fromHand) { newHand = removeOneTile(newHand, t); }
 
+      // Update claimant: hand + melds
+      const claimantUpd = updPlayer(player, {
+        hand: sortHand(newHand), melds: [...player.melds, option.meld],
+      });
+      let newPlayers = updatePlayerInTuple(state.players, option.player, claimantUpd);
+
+      // Remove called tile from the discarder's discards
+      if (state.lastDiscard) {
+        const dIdx = state.lastDiscard.player;
+        const dPlayer = state.players[dIdx];
+        const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
+        newPlayers = updatePlayerInTuple(newPlayers, dIdx, updPlayer(dPlayer, { discards: fixedDiscs }));
+      }
+
       return {
         ...state,
-        players: updatePlayerInTuple(state.players, option.player, updPlayer(player, {
-          hand: sortHand(newHand), melds: [...player.melds, option.meld],
-        })),
+        players: newPlayers,
         currentPlayer: option.player, phase: 'playing', claimOptions: [],
         message: 'チー！',
       };
@@ -447,34 +466,54 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!option) return { ...state, message: 'ポンできません' };
 
       const player = state.players[option.player];
-      const fromHand = option.tiles.filter(t => !isSameTile(t, option.calledTile));
+      const fromHand = option.tiles.slice(0, 2); // [hand1, hand2] 末尾がcalledTile
       let newHand = [...player.hand];
       for (const t of fromHand) { newHand = removeOneTile(newHand, t); }
 
+      const claimantUpd = updPlayer(player, {
+        hand: sortHand(newHand), melds: [...player.melds, option.meld],
+      });
+      let newPlayers = updatePlayerInTuple(state.players, option.player, claimantUpd);
+
+      // Remove called tile from the discarder's discards
+      if (state.lastDiscard) {
+        const dIdx = state.lastDiscard.player;
+        const dPlayer = state.players[dIdx];
+        const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
+        newPlayers = updatePlayerInTuple(newPlayers, dIdx, updPlayer(dPlayer, { discards: fixedDiscs }));
+      }
+
       return {
         ...state,
-        players: updatePlayerInTuple(state.players, option.player, updPlayer(player, {
-          hand: sortHand(newHand), melds: [...player.melds, option.meld],
-        })),
+        players: newPlayers,
         currentPlayer: option.player, phase: 'playing', claimOptions: [],
         message: `ポン！ ${formatTile(option.calledTile)}`,
       };
     }
-
     case 'DAIMINKAN': {
       const option = state.claimOptions.find(c => c.type === 'daiminkan');
       if (!option) return { ...state, message: 'カンできません' };
-
       const player = state.players[option.player];
-      const fromHand = option.tiles.filter(t => !isSameTile(t, option.calledTile));
+      const fromHand = option.tiles.slice(0, 3); // [hand1, hand2, hand3] 末尾がcalledTile
       let newHand = [...player.hand];
       for (const t of fromHand) { newHand = removeOneTile(newHand, t); }
 
+      const claimantUpd = updPlayer(player, {
+        hand: sortHand(newHand), melds: [...player.melds, option.meld],
+      });
+      let newPlayers = updatePlayerInTuple(state.players, option.player, claimantUpd);
+
+      // Remove called tile from the discarder's discards
+      if (state.lastDiscard) {
+        const dIdx = state.lastDiscard.player;
+        const dPlayer = state.players[dIdx];
+        const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
+        newPlayers = updatePlayerInTuple(newPlayers, dIdx, updPlayer(dPlayer, { discards: fixedDiscs }));
+      }
+
       return {
         ...state,
-        players: updatePlayerInTuple(state.players, option.player, updPlayer(player, {
-          hand: sortHand(newHand), melds: [...player.melds, option.meld],
-        })),
+        players: newPlayers,
         currentPlayer: option.player, phase: 'playing', claimOptions: [],
         message: `カン！ ${formatTile(option.calledTile)}`,
       };
@@ -629,7 +668,7 @@ export function createInitialState(): GameState {
       makePlayer(Wind.Sha, 25000), makePlayer(Wind.Pei, 25000),
     ] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData],
     wall: [],
-    deadWall: { tiles: [], doraCount: 1 },
+    deadWall: { tiles: [], doraCount: 0 },
     roundWind: 0, honba: 0, riichiSticks: 0,
     currentPlayer: 0, lastDiscard: null, winner: null,
     lastScoreResult: null,

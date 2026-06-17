@@ -1,9 +1,10 @@
-import React, { useReducer, useEffect, useState } from 'react';
+import React, { useReducer, useEffect, useState, useRef } from 'react';
 import { Text, Box, useInput } from 'ink';
 import { createInitialState, gameReducer, processAiTurn } from '../state/GameState.js';
 import { saveGame, loadGame, clearSave } from '../state/persistence.js';
 import type { ClaimOption, GameAction } from '../state/GameState.js';
 import { formatTile, tileToUnicode } from '../game/tiles.js';
+import { isWinningHand, tilesToCounts } from '../game/agari.js';
 import { type Tile, Suit } from '../game/types.js';
 
 // ── Color helpers ──────────────────────────────────────────────────
@@ -32,7 +33,7 @@ const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, riichi, isHum
     return (
       <Text>
         {riichi ? 'リーチ! ' : ''}
-        {'🀫'.repeat(tiles.length)}
+        {'🀫 '.repeat(tiles.length)}
       </Text>
     );
   }
@@ -43,7 +44,7 @@ const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, riichi, isHum
         const char = tileToUnicode(tile);
         const isSelected = i === selectedIndex;
         return (
-          <Box key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`} marginRight={0}>
+          <Box key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`} width={3}>
             <Text color={tileColor(tile)} inverse={isSelected}>{char}</Text>
           </Box>
         );
@@ -143,14 +144,13 @@ const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
-  const [localProcessing, setLocalProcessing] = useState(false);
+  const processingRef = useRef(false);
   const [restored, setRestored] = useState(false);
 
   useEffect(() => {
     // 起動時に保存があれば復元、なければ新規開始
     const saved = loadGame<ReturnType<typeof createInitialState>>();
     if (saved && saved.phase !== 'ended') {
-      // dispatchで復元 (gameReducerの初期stateとして使う)
       dispatch({ type: 'RESTORE', state: saved } as GameAction);
     } else {
       dispatch({ type: 'START_GAME' });
@@ -158,7 +158,6 @@ const App: React.FC = () => {
     setRestored(true);
   }, []);
 
-  // 状態が変わったら自動セーブ
   // 状態が変わったら自動セーブ
   useEffect(() => {
     if (!restored) return;
@@ -177,25 +176,44 @@ const App: React.FC = () => {
     }
   }, [state.currentPlayer, state.phase, state.players[0].hand.length]);
 
-  // AI turn processing
+  // Riichi auto-tsumogiri: リーチ中のツモ切り（強制）
+  useEffect(() => {
+    if (state.phase !== 'playing') return;
+    if (state.currentPlayer !== 0) return;
+    if (!state.players[0].riichi) return;
+    if (state.players[0].hand.length !== 14) return;
+    if (!state.lastDrawnTile) return;
+
+    // 自摸和ならTSUMO
+    if (isWinningHand(tilesToCounts(state.players[0].hand))) {
+      dispatch({ type: 'TSUMO', player: 0 });
+      return;
+    }
+
+    dispatch({ type: 'DISCARD', player: 0, tile: state.lastDrawnTile });
+  }, [state.phase, state.currentPlayer, state.players[0].riichi, state.players[0].hand.length, state.lastDrawnTile]);
+
+  // AI turn processing (ref でレンダリングをトリガしない)
   useEffect(() => {
     if (state.phase === 'ended') return;
-    if (localProcessing) return;
+    if (processingRef.current) return;
 
-    // Process AI claims or AI turns
     const isAiTurn = state.currentPlayer !== 0;
     const isAiClaim = state.phase === 'claiming' && !state.claimOptions.some(c => c.player === 0);
 
     if (isAiTurn || isAiClaim) {
-      setLocalProcessing(true);
+      processingRef.current = true;
       const timer = setTimeout(() => {
         const { action } = processAiTurn(state);
         if (action) dispatch(action);
-        setLocalProcessing(false);
+        processingRef.current = false;
       }, 600);
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(timer);
+        processingRef.current = false;
+      };
     }
-  }, [state, localProcessing]);
+  }, [state]);
 
   const hand = state.players[0].hand;
   const humanCanTsumo = state.phase === 'playing' && state.currentPlayer === 0 && hand.length === 14;
@@ -258,6 +276,14 @@ const App: React.FC = () => {
 
     // Playing phase: only human's turn
     if (state.currentPlayer !== 0) return;
+
+    // リーチ中は強制ツモ切り: 自摸和(T)以外は受け付けない
+    if (state.players[0].riichi) {
+      if (input === 't') {
+        dispatch({ type: 'TSUMO', player: 0 });
+      }
+      return;
+    }
 
     if (key.leftArrow) { setSelectedIndex(prev => Math.max(0, prev - 1)); return; }
     if (key.rightArrow) { setSelectedIndex(prev => Math.min(hand.length - 1, prev + 1)); return; }
@@ -374,9 +400,10 @@ const App: React.FC = () => {
       </Box>
       <Text dimColor>{'─'.repeat(40)}</Text>
       <Box>
-        <Text dimColor>ドラ表示: </Text>
         {Array.from({ length: state.deadWall.doraCount }, (_, i) => (
-          <Text key={i} color="cyan">{formatTile(state.deadWall.tiles[i]!)} </Text>
+          <Box key={i} width={3}>
+            <Text color="cyan">{formatTile(state.deadWall.tiles[i]!)}</Text>
+          </Box>
         ))}
       </Box>
       <Box marginTop={1} marginBottom={1}>
