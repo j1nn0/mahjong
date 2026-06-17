@@ -35,11 +35,40 @@ export function tilesToCounts(tiles: readonly Tile[]): number[] {
 
 // ── Winning hand check ───────────────────────────────────────────
 
-/**
- * 手牌が和了形か判定 (4面子 + 1雀頭)
- * counts: 長さ34のカウント配列 (14枚想定)
- */
-export function isWinningHand(counts: number[]): boolean {
+const KOKUSHI_INDICES = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
+
+function tileCount(counts: readonly number[]): number {
+  return counts.reduce((sum, count) => sum + count, 0);
+}
+
+function isChiitoitsu(counts: readonly number[]): boolean {
+  if (tileCount(counts) !== 14) return false;
+  let pairs = 0;
+  for (const count of counts) {
+    if (count === 2) pairs++;
+    else if (count !== 0) return false;
+  }
+  return pairs === 7;
+}
+
+function isKokushi(counts: readonly number[]): boolean {
+  if (tileCount(counts) !== 14) return false;
+  let pairFound = false;
+  for (let i = 0; i < 34; i++) {
+    const count = counts[i]!;
+    const required = KOKUSHI_INDICES.includes(i);
+    if (required) {
+      if (count === 0) return false;
+      if (count === 2) pairFound = true;
+      else if (count !== 1) return false;
+    } else if (count !== 0) {
+      return false;
+    }
+  }
+  return pairFound;
+}
+
+function isStandardWinningHand(counts: number[]): boolean {
   for (let i = 0; i < 34; i++) {
     if (counts[i]! >= 2) {
       counts[i] = counts[i]! - 2; // 雀頭として抜く
@@ -51,6 +80,16 @@ export function isWinningHand(counts: number[]): boolean {
     }
   }
   return false;
+}
+
+/**
+ * 手牌が和了形か判定する。
+ * 標準形 (4面子 + 1雀頭)、七対子、国士無双に対応する。
+ * counts: 長さ34のカウント配列 (14枚想定)
+ */
+export function isWinningHand(counts: number[]): boolean {
+  if (isChiitoitsu(counts) || isKokushi(counts)) return true;
+  return isStandardWinningHand([...counts]);
 }
 
 /** 再帰的に面子を抜いていく。n: 抜くべき面子の残り数 */

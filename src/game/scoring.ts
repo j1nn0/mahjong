@@ -86,7 +86,10 @@ const MANGAN = 2000;
 export function calculateScore(
   handGroups: HandGroups,
   detectedYaku: readonly YakuResult[],
-  isDealer: boolean,
+  winner: number,
+  dealer: number,
+  roundWind: number,
+  playerWind: number,
   riichiSticks: number,
   honba: number,
   doraIndicators?: readonly Tile[],
@@ -96,18 +99,18 @@ export function calculateScore(
   const yakumanCount = totalYakuman(detectedYaku);
   if (yakumanCount > 0) {
     const basePoints = MANGAN * 4 * yakumanCount;
-    const payment = calcPayment(isDealer, basePoints, riichiSticks, honba);
+    const payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba);
     return {
       yaku: detectedYaku, han: 0, yakuman: yakumanCount,
       fu: 0, basePoints, doraHan: 0, limit: 'yakuman',
-      score: payment.winnerGets + riichiSticks * 1000 + honba * 300,
+      score: payment.winnerGets,
       payment,
     };
   }
 
   // Normal score
   const yakuHan = totalHan(detectedYaku);
-  const fu = calculateFu(handGroups, detectedYaku, handGroups.groups.length > 0 ? 0 : 0, handGroups.groups.length > 0 ? 0 : 0);
+  const fu = calculateFu(handGroups, detectedYaku, roundWind, playerWind);
 
   // Dora count (not included in hand yaku - purely additive)
   const doraIndicatorsList = doraIndicators ?? [];
@@ -136,32 +139,36 @@ export function calculateScore(
     basePoints = MANGAN;
   }
 
-  const payment = calcPayment(isDealer, basePoints, riichiSticks, honba);
+  const payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba);
   const score = payment.winnerGets;
 
   return { yaku: detectedYaku, han, yakuman: 0, fu, basePoints, doraHan: doraCounted, limit, score, payment };
 }
 
 function calcPayment(
-  isDealer: boolean, basePoints: number,
+  winner: number, dealer: number, isTsumo: boolean, basePoints: number,
   riichiSticks: number, honba: number,
 ): Payment {
-  const honbaBonus = honba * 300;
+  const riichiBonus = riichiSticks * 1000;
 
-  if (isDealer) {
-    const perPlayer = Math.ceil(basePoints * 2 / 100) * 100;
-    const from = [1, 2, 3].map(i => ({ player: i, amount: perPlayer }));
-    const winnerGets = perPlayer * 3 + riichiSticks * 1000 + honbaBonus;
+  if (!isTsumo) {
+    const multiplier = winner === dealer ? 6 : 4;
+    const amount = Math.ceil(basePoints * multiplier / 100) * 100 + honba * 300;
+    return { from: [], winnerGets: amount + riichiBonus };
+  }
+
+  if (winner === dealer) {
+    const perPlayer = Math.ceil(basePoints * 2 / 100) * 100 + honba * 100;
+    const from = [0, 1, 2, 3].filter(i => i !== winner).map(i => ({ player: i, amount: perPlayer }));
+    const winnerGets = perPlayer * 3 + riichiBonus;
     return { from, winnerGets };
   } else {
-    const parentAmount = Math.ceil(basePoints * 2 / 100) * 100;
-    const childAmount = Math.ceil(basePoints / 100) * 100;
-    const from = [
-      { player: 0, amount: parentAmount },
-      { player: 2, amount: childAmount },
-      { player: 3, amount: childAmount },
-    ];
-    const winnerGets = parentAmount + childAmount * 2 + riichiSticks * 1000 + honbaBonus;
+    const parentAmount = Math.ceil(basePoints * 2 / 100) * 100 + honba * 100;
+    const childAmount = Math.ceil(basePoints / 100) * 100 + honba * 100;
+    const from = [0, 1, 2, 3]
+      .filter(i => i !== winner)
+      .map(i => ({ player: i, amount: i === dealer ? parentAmount : childAmount }));
+    const winnerGets = from.reduce((sum, p) => sum + p.amount, 0) + riichiBonus;
     return { from, winnerGets };
   }
 }
@@ -184,18 +191,21 @@ export interface ScoreParams {
   isChankan: boolean;
   riichiSticks: number;
   honba: number;
+  dealer?: number;
   doraIndicators?: readonly Tile[];
   uraDoraIndicators?: readonly Tile[];
 }
 
 export function fullScore(params: ScoreParams): ScoreResult | null {
+  const dealer = params.dealer ?? 0;
+  const playerWind = (params.playerSeat - dealer + 4) % 4;
   const { yaku, groups } = detectYaku({
     closedTiles: params.closedTiles,
     melds: params.melds,
     winTile: params.winTile,
     isTsumo: params.isTsumo,
     roundWind: params.roundWind,
-    playerWind: params.playerSeat,
+    playerWind,
     isRiichi: params.isRiichi,
     isDoubleRiichi: params.isDoubleRiichi,
     isIppatsu: params.isIppatsu,
@@ -207,6 +217,16 @@ export function fullScore(params: ScoreParams): ScoreResult | null {
 
   if (!groups || yaku.length === 0) return null;
 
-  const isDealer = params.playerSeat === 0;
-  return calculateScore(groups, yaku, isDealer, params.riichiSticks, params.honba, params.doraIndicators, params.uraDoraIndicators);
+  return calculateScore(
+    groups,
+    yaku,
+    params.playerSeat,
+    dealer,
+    params.roundWind,
+    playerWind,
+    params.riichiSticks,
+    params.honba,
+    params.doraIndicators,
+    params.uraDoraIndicators,
+  );
 }

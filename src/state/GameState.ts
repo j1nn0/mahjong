@@ -34,17 +34,20 @@ export interface GameState {
   wall: readonly Tile[];
   deadWall: DeadWallState;
   roundWind: number;
+  roundNumber: number;
+  dealer: number;
   honba: number;
   riichiSticks: number;
   currentPlayer: number;
   lastDiscard: { readonly tile: Tile; readonly player: number } | null;
   winner: number | null;
-  phase: 'playing' | 'claiming' | 'ended';
+  phase: 'playing' | 'claiming' | 'roundEnded' | 'ended';
   claimOptions: readonly ClaimOption[];
   /** 直近の和了スコア (表示用) */
   /** 最後にツモった牌 (表示用、TSUMO時のwinTile特定用) */
   lastDrawnTile: Tile | null;
   lastScoreResult: ScoreResult | null;
+  finalRanking: readonly number[] | null;
   message: string;
 }
 
@@ -62,6 +65,7 @@ export type GameAction =
   | { type: 'RON'; winner: number }
   | { type: 'TSUMO'; player: number }
   | { type: 'END_ROUND'; message?: string }
+  | { type: 'NEXT_ROUND' }
   | { type: 'RESTORE'; state: GameState };
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -87,11 +91,151 @@ function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
   return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
 }
 
+function turnTileCount(player: PlayerData): number {
+  return player.hand.length + player.melds.reduce((sum, meld) => sum + meld.tiles.length, 0);
+}
+
+function allPlayerTiles(player: PlayerData): readonly Tile[] {
+  return [...player.hand, ...player.melds.flatMap(meld => meld.tiles)];
+}
+
 /** 現在のstateからドラパラメータを抽出 */
 const doraParams = (state: GameState) => ({
   doraIndicators: getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
   uraDoraIndicators: getUraDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
 });
+
+function playerWind(player: number, dealer: number): Wind {
+  return ((player - dealer + 4) % 4) as Wind;
+}
+
+function roundName(roundNumber: number): string {
+  return `東${roundNumber}局`;
+}
+
+function rankPlayers(players: readonly [PlayerData, PlayerData, PlayerData, PlayerData]): number[] {
+  return [0, 1, 2, 3].sort((a, b) => {
+    const pointDiff = players[b].points - players[a].points;
+    return pointDiff !== 0 ? pointDiff : a - b;
+  });
+}
+
+function dealRound(
+  state: GameState,
+  dealer: number,
+  roundNumber: number,
+  honba: number,
+  riichiSticks: number,
+  message: string,
+): GameState {
+  const wallData = buildWall();
+  const players = state.players.map((player, i) => ({
+    hand: [],
+    melds: [],
+    discards: [],
+    riichi: false,
+    points: player.points,
+    wind: playerWind(i, dealer),
+  })) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+
+  const { drawn: dealerHand, remaining: afterDealer } = drawFromWall(wallData.wall, 14);
+  let wallRemaining = afterDealer;
+  players[dealer] = updPlayer(players[dealer], { hand: sortHand([...dealerHand]) });
+
+  for (let offset = 1; offset < 4; offset++) {
+    const player = (dealer + offset) % 4;
+    const { drawn, remaining } = drawFromWall(wallRemaining, 13);
+    players[player] = updPlayer(players[player], { hand: sortHand([...drawn]) });
+    wallRemaining = remaining;
+  }
+
+  return {
+    ...state,
+    players,
+    wall: wallRemaining,
+    deadWall: { tiles: wallData.deadWall, doraCount: 1 },
+    roundWind: Wind.Ton,
+    roundNumber,
+    dealer,
+    honba,
+    riichiSticks,
+    currentPlayer: dealer,
+    lastDiscard: null,
+    winner: null,
+    lastScoreResult: null,
+    lastDrawnTile: null,
+    finalRanking: null,
+    phase: 'playing',
+    claimOptions: [],
+    message,
+  };
+}
+
+function finishRound(
+  state: GameState,
+  players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
+  winner: number | null,
+  isDraw: boolean,
+  dealerContinues: boolean,
+  score: ScoreResult | null,
+  message: string,
+): GameState {
+  const nextDealer = dealerContinues ? state.dealer : (state.dealer + 1) % 4;
+  const nextRoundNumber = dealerContinues ? state.roundNumber : state.roundNumber + 1;
+  const nextHonba = dealerContinues || isDraw ? state.honba + 1 : 0;
+  const nextRiichiSticks = winner === null ? state.riichiSticks : 0;
+  const finalRanking = rankPlayers(players);
+  const finalDealerTop = dealerContinues && state.roundNumber >= 4 && finalRanking[0] === state.dealer;
+  const matchEnded = state.roundNumber >= 4 && (!dealerContinues || finalDealerTop);
+
+  return {
+    ...state,
+    players,
+    dealer: nextDealer,
+    roundNumber: nextRoundNumber,
+    honba: nextHonba,
+    riichiSticks: nextRiichiSticks,
+    winner,
+    phase: matchEnded ? 'ended' : 'roundEnded',
+    claimOptions: [],
+    lastScoreResult: score,
+    finalRanking: matchEnded ? finalRanking : null,
+    message,
+  };
+}
+
+function closedTilesForTsumo(hand: readonly Tile[], winTile: Tile): readonly Tile[] {
+  return removeOneTile(hand, winTile);
+}
+
+function applyRonPayment(
+  players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
+  winner: number,
+  discarder: number,
+  score: ScoreResult,
+  riichiSticks: number,
+): [PlayerData, PlayerData, PlayerData, PlayerData] {
+  const loserPays = score.score - riichiSticks * 1000;
+  const afterLoser = updatePlayerInTuple(players, discarder, updPlayer(players[discarder], {
+    points: players[discarder].points - loserPays,
+  }));
+  return updatePlayerInTuple(afterLoser, winner, updPlayer(afterLoser[winner], {
+    points: afterLoser[winner].points + score.score,
+  }));
+}
+
+function applyTsumoPayment(
+  players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
+  winner: number,
+  score: ScoreResult,
+): [PlayerData, PlayerData, PlayerData, PlayerData] {
+  return players.map((player, i) => {
+    if (i === winner) return updPlayer(player, { points: player.points + score.score });
+    const payment = score.payment.from.find(f => f.player === i);
+    return updPlayer(player, { points: player.points - (payment?.amount ?? 0) });
+  }) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+}
+
 /** 流局時の聴牌確認と点棒移動 */
 function handleExhaustiveDraw(state: GameState): GameState {
   const tenpaiList: number[] = [];
@@ -112,22 +256,17 @@ function handleExhaustiveDraw(state: GameState): GameState {
 
   const newPlayers = [...state.players] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
 
-  // 3000点ルール: 不聴者→聴牌者への支払い
-  // 不聴の親(0)は1500×(聴牌人数)、子は1000×(聴牌人数)をプールに支払い
-  // プールを聴牌者で均等分割
   if (tenpaiList.length > 0 && notenList.length > 0) {
-    let pool = 0;
+    const notenPays = 3000 / notenList.length;
+    const tenpaiGets = 3000 / tenpaiList.length;
     for (const n of notenList) {
-      const payment = (n === 0 ? 1500 : 1000) * tenpaiList.length;
-      pool += payment;
       newPlayers[n] = updPlayer(newPlayers[n], {
-        points: newPlayers[n].points - payment,
+        points: newPlayers[n].points - notenPays,
       });
     }
-    const perTenpai = Math.floor(pool / tenpaiList.length / 100) * 100;
     for (const t of tenpaiList) {
       newPlayers[t] = updPlayer(newPlayers[t], {
-        points: newPlayers[t].points + perTenpai,
+        points: newPlayers[t].points + tenpaiGets,
       });
     }
   }
@@ -138,12 +277,15 @@ function handleExhaustiveDraw(state: GameState): GameState {
     ? `聴牌: ${tenpaiStr}  不聴: ${notenStr || 'なし'}`
     : '全員不聴';
 
-  return {
-    ...state,
-    players: newPlayers,
-    phase: 'ended',
-    message: `流局: ${detail}`,
-  };
+  return finishRound(
+    state,
+    newPlayers,
+    null,
+    true,
+    tenpaiList.includes(state.dealer),
+    null,
+    `流局: ${detail}`,
+  );
 }
 
 // ── Claim checking ─────────────────────────────────────────────────
@@ -243,6 +385,9 @@ export function sortClaimsByPriority(
 
 export function processAiTurn(state: GameState): { state: GameState; action: GameAction | null } {
   if (state.phase === 'claiming') {
+    if (state.claimOptions.some(c => c.player === 0)) {
+      return { state, action: null };
+    }
     const aiClaims = state.claimOptions.filter(c => c.player !== 0);
     if (aiClaims.length > 0) {
       const claim = aiClaims[0]!;
@@ -254,30 +399,31 @@ export function processAiTurn(state: GameState): { state: GameState; action: Gam
   }
   const player = state.players[state.currentPlayer];
 
-  // Always draw before discarding: normal (13) and post-claim (<13)
-  if (player.hand.length > 0 && player.hand.length <= 13) {
-    const afterDraw = gameReducer(state, { type: 'DRAW', player: state.currentPlayer });
-    if (afterDraw.phase === 'ended') {
-      return { state: afterDraw, action: null };
-    }
-    const p = afterDraw.players[state.currentPlayer];
+  const totalTiles = turnTileCount(player);
 
-    const opponentDiscards = afterDraw.players.map(p => p.discards);
-    const opponentRiichi = afterDraw.players.map(p => p.riichi);
+  if (totalTiles <= 13) {
+    return { state, action: { type: 'DRAW', player: state.currentPlayer } };
+  }
 
-    // Tsumo check: only for 13-hand normal turns
-    if (player.hand.length === 13 && isWinningHand(tilesToCounts(p.hand))) {
-      return { state: afterDraw, action: { type: 'TSUMO', player: state.currentPlayer } };
+  if (totalTiles === 14 && player.hand.length > 0) {
+    if (isWinningHand(tilesToCounts(allPlayerTiles(player)))) {
+      return { state, action: { type: 'TSUMO', player: state.currentPlayer } };
     }
 
-    const discard = aiChooseDiscard(p.hand, opponentDiscards, opponentRiichi);
-    const testHand = removeOneTile(p.hand, discard);
+    const discard = player.riichi && state.lastDrawnTile
+      ? state.lastDrawnTile
+      : aiChooseDiscard(player.hand, state.players.map(p => p.discards), state.players.map(p => p.riichi));
+    const testHand = removeOneTile(player.hand, discard);
 
-    // Riichi: only for 13-hand closed turns
-    if (player.hand.length === 13 && !p.riichi && findTenpaiTiles(testHand).length > 0 && p.points >= 1000) {
-      return { state: afterDraw, action: { type: 'DECLARE_RIICHI', player: state.currentPlayer, discardTile: discard } };
+    if (!player.riichi && findTenpaiTiles(testHand).length > 0 && player.points >= 1000) {
+      return { state, action: { type: 'DECLARE_RIICHI', player: state.currentPlayer, discardTile: discard } };
     }
-    return { state: afterDraw, action: { type: 'DISCARD', player: state.currentPlayer, tile: discard } };
+    return { state, action: { type: 'DISCARD', player: state.currentPlayer, tile: discard } };
+  }
+
+  if (player.hand.length > 0) {
+    const discard = aiChooseDiscard(player.hand, state.players.map(p => p.discards), state.players.map(p => p.riichi));
+    return { state, action: { type: 'DISCARD', player: state.currentPlayer, tile: discard } };
   }
   return { state, action: null };
 }
@@ -289,38 +435,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'RESTORE':
       return (action as { type: 'RESTORE'; state: GameState }).state;
     case 'START_GAME': {
-      const wallData = buildWall();
-      const p0 = makePlayer(Wind.Ton, 25000);
-      const p1 = makePlayer(Wind.Nan, 25000);
-      const p2 = makePlayer(Wind.Sha, 25000);
-      const p3 = makePlayer(Wind.Pei, 25000);
+      return dealRound(createInitialState(), 0, 1, 0, 0, 'ゲーム開始！ 東1局 あなたが親です');
+    }
 
-      const { drawn: dealerHand, remaining: afterDealer } = drawFromWall(wallData.wall, 14);
-      let wallRemaining = afterDealer;
-      p0.hand = sortHand([...dealerHand]);
-
-      for (let i = 1; i < 4; i++) {
-        const { drawn, remaining } = drawFromWall(wallRemaining, 13);
-        [p0, p1, p2, p3][i]!.hand = [...drawn];
-        wallRemaining = remaining;
-      }
-
-      return {
-        players: [
-          { ...p0, hand: sortHand([...p0.hand]) },
-          { ...p1, hand: sortHand([...p1.hand]) },
-          { ...p2, hand: sortHand([...p2.hand]) },
-          { ...p3, hand: sortHand([...p3.hand]) },
-        ] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData],
-        wall: wallRemaining,
-        deadWall: { tiles: wallData.deadWall, doraCount: 1 },
-        roundWind: 0, honba: 0, riichiSticks: 0,
-        lastDrawnTile: null,
-        currentPlayer: 0, lastDiscard: null, winner: null,
-        lastScoreResult: null,
-        phase: 'playing', claimOptions: [],
-        message: 'ゲーム開始！ 東1局 あなたが親です',
-      };
+    case 'NEXT_ROUND': {
+      if (state.phase !== 'roundEnded') return state;
+      return dealRound(
+        state,
+        state.dealer,
+        state.roundNumber,
+        state.honba,
+        state.riichiSticks,
+        `${roundName(state.roundNumber)}開始`,
+      );
     }
 
     case 'DRAW': {
@@ -335,7 +462,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
 
       let message = `ツモ: ${formatTile(drawn[0]!)}`;
-      if (isWinningHand(tilesToCounts(newHand))) {
+      if (isWinningHand(tilesToCounts(allPlayerTiles(updatedPlayer)))) {
         message = `ツモ! ${formatTile(drawn[0]!)} をツモりました。和了できます！`;
       }
       return { ...state, players: newPlayers, wall: remaining, lastDrawnTile: drawn[0]!, message };
@@ -365,6 +492,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             isTsumo: false,
             roundWind: state.roundWind,
             playerSeat: winner,
+            dealer: state.dealer,
             isRiichi: true,
             riichiSticks: state.riichiSticks,
             honba: state.honba,
@@ -384,27 +512,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
               message: `${winner === 0 ? 'あなた' : `プレイヤー${winner + 1}`}がロン!`,
             };
           }
-          // Apply points
-          const updatedPaymentPlayers = updatePlayerInTuple(
-            newPlayers, loser,
-            updPlayer(newPlayers[loser], {
-              points: newPlayers[loser].points - score.score,
-            }),
-          );
-          const finalPlayers = updatePlayerInTuple(
-            updatedPaymentPlayers, winner,
-            updPlayer(updatedPaymentPlayers[winner], {
-              points: updatedPaymentPlayers[winner].points + score.score,
-            }),
-          );
+          const finalPlayers = applyRonPayment(newPlayers, winner, loser, score, state.riichiSticks);
           const yakuStr = score.yaku.map(y => y.name).join('・');
-          return {
-            ...state, players: finalPlayers,
-            lastDiscard: { tile: action.tile, player: action.player },
-            lastScoreResult: score,
-            winner, phase: 'ended', claimOptions: [],
-            message: `${winner === 0 ? 'あなた' : `プレイヤー${winner + 1}`}がロン! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
-          };
+          return finishRound(
+            { ...state, lastDiscard: { tile: action.tile, player: action.player } },
+            finalPlayers,
+            winner,
+            false,
+            winner === state.dealer,
+            score,
+            `${winner === 0 ? 'あなた' : `プレイヤー${winner + 1}`}がロン! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
+          );
           }
         }
       }
@@ -462,7 +580,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case 'PON': {
-      const option = state.claimOptions.find(c => c.type === 'pon');
+      const option = state.claimOptions.find(c => c.type === 'pon' && c.player === action.player);
       if (!option) return { ...state, message: 'ポンできません' };
 
       const player = state.players[option.player];
@@ -491,7 +609,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
     case 'DAIMINKAN': {
-      const option = state.claimOptions.find(c => c.type === 'daiminkan');
+      const option = state.claimOptions.find(c => c.type === 'daiminkan' && c.player === action.player);
       if (!option) return { ...state, message: 'カンできません' };
       const player = state.players[option.player];
       const fromHand = option.tiles.slice(0, 3); // [hand1, hand2, hand3] 末尾がcalledTile
@@ -566,6 +684,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         isTsumo: false,
         roundWind: state.roundWind,
         playerSeat: winner,
+        dealer: state.dealer,
         isRiichi: state.players[winner].riichi,
         riichiSticks: state.riichiSticks,
         honba: state.honba,
@@ -580,32 +699,39 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!score) {
         return { ...state, message: 'スコア計算できません' };
       }
-      const players1 = updatePlayerInTuple(state.players, winner, updPlayer(state.players[winner], {
-        points: state.players[winner].points + score.score - (state.players[winner].riichi ? 0 : 0),
-      }));
-      // Deduct from discarder (simplified: ron = discarder pays full amount)
-      // But for simplicity, we're not subtracting from all players
+      const players1 = applyRonPayment(
+        state.players,
+        winner,
+        state.lastDiscard.player,
+        score,
+        state.riichiSticks,
+      );
       const yakuStr = score.yaku.map(y => y.name).join('・');
-      return {
-        ...state, players: players1,
-        lastScoreResult: score,
-        winner, phase: 'ended', claimOptions: [],
-        message: `${winner === 0 ? 'あなた' : `プレイヤー${winner + 1}`}がロン! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
-      };
+      return finishRound(
+        state,
+        players1,
+        winner,
+        false,
+        winner === state.dealer,
+        score,
+        `${winner === 0 ? 'あなた' : `プレイヤー${winner + 1}`}がロン! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
+      );
     }
 
     case 'TSUMO': {
-      if (!isWinningHand(tilesToCounts(state.players[action.player].hand))) {
+      if (!isWinningHand(tilesToCounts(allPlayerTiles(state.players[action.player])))) {
         return { ...state, message: 'ツモ和了できません' };
       }
       const player = action.player;
+      const winTile = state.lastDrawnTile ?? state.players[player].hand[state.players[player].hand.length - 1]!;
       const score = fullScore({
-        closedTiles: state.players[player].hand,
+        closedTiles: closedTilesForTsumo(state.players[player].hand, winTile),
         melds: state.players[player].melds,
-        winTile: state.lastDrawnTile ?? state.players[player].hand[0]!,
+        winTile,
         isTsumo: true,
         roundWind: state.roundWind,
         playerSeat: player,
+        dealer: state.dealer,
         isRiichi: state.players[player].riichi,
         riichiSticks: state.riichiSticks,
         honba: state.honba,
@@ -620,25 +746,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!score) {
         return { ...state, message: 'スコア計算できません' };
       }
-      // Tsumo: all other players pay
-      const updatedTsPlayers = state.players.map((p, i) => {
-        const payment = score.payment.from.find(f => f.player === i);
-        return i === player
-          ? updPlayer(p, { points: p.points + score.score })
-          : updPlayer(p, { points: p.points - (payment?.amount ?? 0) });
-      }) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+      const updatedTsPlayers = applyTsumoPayment(state.players, player, score);
       const yakuStr = score.yaku.map(y => y.name).join('・');
-      return {
-        ...state,
-        players: updatedTsPlayers,
-        lastScoreResult: score,
-        winner: player, phase: 'ended', claimOptions: [],
-        message: `${player === 0 ? 'あなた' : `プレイヤー${player + 1}`}がツモ和了! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
-      };
+      return finishRound(
+        state,
+        updatedTsPlayers,
+        player,
+        false,
+        player === state.dealer,
+        score,
+        `${player === 0 ? 'あなた' : `プレイヤー${player + 1}`}がツモ和了! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
+      );
     }
 
     case 'END_ROUND':
-      return { ...state, phase: 'ended', message: action.message ?? '局終了' };
+      return finishRound(state, state.players, null, true, false, null, action.message ?? '局終了');
 
     default:
       return state;
@@ -669,10 +791,11 @@ export function createInitialState(): GameState {
     ] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData],
     wall: [],
     deadWall: { tiles: [], doraCount: 0 },
-    roundWind: 0, honba: 0, riichiSticks: 0,
+    roundWind: 0, roundNumber: 1, dealer: 0, honba: 0, riichiSticks: 0,
     currentPlayer: 0, lastDiscard: null, winner: null,
     lastScoreResult: null,
     lastDrawnTile: null,
+    finalRanking: null,
     phase: 'playing', claimOptions: [],
     message: '',
   };

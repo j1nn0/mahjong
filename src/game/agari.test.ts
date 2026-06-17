@@ -17,6 +17,7 @@ function sha(): Tile { return { suit: Suit.Wind, value: 2 }; }
 function pei(): Tile { return { suit: Suit.Wind, value: 3 }; }
 function chun(): Tile { return { suit: Suit.Dragon, value: 0 }; }
 function haku(): Tile { return { suit: Suit.Dragon, value: 2 }; }
+function hatsu(): Tile { return { suit: Suit.Dragon, value: 1 }; }
 
 describe('isWinningHand', () => {
   it('detects a standard winning hand (4 sequences + 1 pair)', () => {
@@ -84,6 +85,30 @@ describe('isWinningHand', () => {
     ];
     expect(isWinningHand(tilesToCounts(tiles))).toBe(true);
   });
+
+  it('detects chiitoitsu as a winning hand', () => {
+    const tiles = [
+      m(1), m(1),
+      m(2), m(2),
+      p(3), p(3),
+      p(4), p(4),
+      s(5), s(5),
+      s(6), s(6),
+      ton(), ton(),
+    ];
+    expect(isWinningHand(tilesToCounts(tiles))).toBe(true);
+  });
+
+  it('detects kokushi musou as a winning hand', () => {
+    const tiles = [
+      m(1), m(9),
+      p(1), p(9),
+      s(1), s(9),
+      ton(), ton(), nan(), sha(), pei(),
+      chun(), haku(), hatsu(),
+    ];
+    expect(isWinningHand(tilesToCounts(tiles))).toBe(true);
+  });
 });
 
 describe('isTenpai', () => {
@@ -123,5 +148,32 @@ describe('isTenpai', () => {
       ton(), nan(), sha(), pei(),
     ];
     expect(isTenpai(tiles)).toBe(false);
+  });
+
+  it('detects chiitoitsu tenpai', () => {
+    const tiles = [
+      m(1), m(1),
+      m(2), m(2),
+      p(3), p(3),
+      p(4), p(4),
+      s(5), s(5),
+      s(6), s(6),
+      ton(),
+    ];
+    expect(isTenpai(tiles)).toBe(true);
+    expect(findTenpaiTiles(tiles)).toContain(tileToIndex(ton()));
+  });
+
+  it('detects kokushi tenpai', () => {
+    const tiles = [
+      m(1), m(9),
+      p(1), p(9),
+      s(1), s(9),
+      ton(), nan(), sha(), pei(),
+      chun(), haku(), hatsu(),
+    ];
+    expect(isTenpai(tiles)).toBe(true);
+    expect(findTenpaiTiles(tiles)).toContain(tileToIndex(m(1)));
+    expect(findTenpaiTiles(tiles)).toContain(tileToIndex(hatsu()));
   });
 });

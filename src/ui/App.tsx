@@ -2,10 +2,10 @@ import React, { useReducer, useEffect, useState, useRef } from 'react';
 import { Text, Box, useInput } from 'ink';
 import { createInitialState, gameReducer, processAiTurn } from '../state/GameState.js';
 import { saveGame, loadGame, clearSave } from '../state/persistence.js';
-import type { ClaimOption, GameAction } from '../state/GameState.js';
+import type { ClaimOption, GameAction, GameState } from '../state/GameState.js';
 import { formatTile, tileToUnicode } from '../game/tiles.js';
 import { isWinningHand, tilesToCounts } from '../game/agari.js';
-import { type Tile, Suit } from '../game/types.js';
+import { type Meld, type Tile, Suit } from '../game/types.js';
 
 // ── Color helpers ──────────────────────────────────────────────────
 
@@ -70,19 +70,44 @@ const DiscardView: React.FC<DiscardViewProps> = ({ discards, riichi }) => {
   );
 };
 
+// ── Meld display ──────────────────────────────────────────────────
+
+interface MeldViewProps {
+  melds: readonly Meld[];
+}
+
+const MeldView: React.FC<MeldViewProps> = ({ melds }) => {
+  if (melds.length === 0) return <Text dimColor>--</Text>;
+  return (
+    <Text>
+      {melds.map((meld, i) => (
+        <Text key={i}>
+          [
+          {meld.tiles.map((tile, j) => (
+            <Text key={j} color={tileColor(tile)}>{formatTile(tile)} </Text>
+          ))}
+          ] {' '}
+        </Text>
+      ))}
+    </Text>
+  );
+};
+
 // ── Opponent info ──────────────────────────────────────────────────
 interface OpponentInfoProps {
   wind: string;
   discards: readonly Tile[];
+  melds: readonly Meld[];
   riichi: boolean;
   points: number;
   tileCount: number;
 }
 
-const OpponentInfo: React.FC<OpponentInfoProps> = ({ wind, discards, riichi, points, tileCount }) => {
+const OpponentInfo: React.FC<OpponentInfoProps> = ({ wind, discards, melds, riichi, points, tileCount }) => {
   return (
     <Box flexDirection="column" marginBottom={1}>
       <Text bold>{wind} ({points}点) {riichi ? '(リーチ)' : ''} 手牌:{tileCount}</Text>
+      <Box><Text>副露: </Text><MeldView melds={melds} /></Box>
       <Box><DiscardView discards={discards} riichi={riichi} /></Box>
     </Box>
   );
@@ -140,44 +165,57 @@ const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, message }) =
 // ── Main game component ───────────────────────────────────────────
 
 const WIND_NAMES = ['東', '南', '西', '北'];
+const roundName = (roundNumber: number) => `東${roundNumber}局`;
+const turnTileCount = (player: GameState['players'][number]) =>
+  player.hand.length + player.melds.reduce((sum, meld) => sum + meld.tiles.length, 0);
+
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
   const processingRef = useRef(false);
-  const [restored, setRestored] = useState(false);
+  const [startupMode, setStartupMode] = useState<'loading' | 'choose' | 'ready'>('loading');
+  const [savedState, setSavedState] = useState<GameState | null>(null);
 
   useEffect(() => {
-    // 起動時に保存があれば復元、なければ新規開始
-    const saved = loadGame<ReturnType<typeof createInitialState>>();
+    const saved = loadGame<GameState>();
     if (saved && saved.phase !== 'ended') {
-      dispatch({ type: 'RESTORE', state: saved } as GameAction);
+      setSavedState({
+        ...createInitialState(),
+        ...saved,
+        roundNumber: saved.roundNumber ?? 1,
+        dealer: saved.dealer ?? 0,
+        finalRanking: saved.finalRanking ?? null,
+      });
+      setStartupMode('choose');
     } else {
       dispatch({ type: 'START_GAME' });
+      setStartupMode('ready');
     }
-    setRestored(true);
   }, []);
 
   // 状態が変わったら自動セーブ
   useEffect(() => {
-    if (!restored) return;
+    if (startupMode !== 'ready') return;
     if (state.phase === 'ended') {
       clearSave();
-    } else if (state.phase === 'playing' || state.phase === 'claiming') {
+    } else if (state.phase === 'playing' || state.phase === 'claiming' || state.phase === 'roundEnded') {
       saveGame(state);
     }
-  }, [state, restored]);
+  }, [state, startupMode]);
   // Auto-draw for human
   useEffect(() => {
+    if (startupMode !== 'ready') return;
     if (state.phase !== 'playing') return;
     if (state.currentPlayer !== 0) return;
-    if (state.players[0].hand.length === 13) {
+    if (turnTileCount(state.players[0]) === 13) {
       dispatch({ type: 'DRAW', player: 0 });
     }
-  }, [state.currentPlayer, state.phase, state.players[0].hand.length]);
+  }, [startupMode, state.currentPlayer, state.phase, state.players[0].hand.length, state.players[0].melds.length]);
 
   // Riichi auto-tsumogiri: リーチ中のツモ切り（強制）
   useEffect(() => {
+    if (startupMode !== 'ready') return;
     if (state.phase !== 'playing') return;
     if (state.currentPlayer !== 0) return;
     if (!state.players[0].riichi) return;
@@ -191,32 +229,34 @@ const App: React.FC = () => {
     }
 
     dispatch({ type: 'DISCARD', player: 0, tile: state.lastDrawnTile });
-  }, [state.phase, state.currentPlayer, state.players[0].riichi, state.players[0].hand.length, state.lastDrawnTile]);
+  }, [startupMode, state.phase, state.currentPlayer, state.players[0].riichi, state.players[0].hand.length, state.lastDrawnTile]);
 
   // AI turn processing (ref でレンダリングをトリガしない)
   useEffect(() => {
+    if (startupMode !== 'ready') return;
     if (state.phase === 'ended') return;
+    if (state.phase === 'roundEnded') return;
     if (processingRef.current) return;
 
-    const isAiTurn = state.currentPlayer !== 0;
+    const isAiTurn = state.phase === 'playing' && state.currentPlayer !== 0;
     const isAiClaim = state.phase === 'claiming' && !state.claimOptions.some(c => c.player === 0);
 
     if (isAiTurn || isAiClaim) {
       processingRef.current = true;
       const timer = setTimeout(() => {
         const { action } = processAiTurn(state);
-        if (action) dispatch(action);
         processingRef.current = false;
+        if (action) dispatch(action);
       }, 600);
       return () => {
         clearTimeout(timer);
         processingRef.current = false;
       };
     }
-  }, [state]);
+  }, [state, startupMode]);
 
   const hand = state.players[0].hand;
-  const humanCanTsumo = state.phase === 'playing' && state.currentPlayer === 0 && hand.length === 14;
+  const humanCanTsumo = state.phase === 'playing' && state.currentPlayer === 0 && turnTileCount(state.players[0]) === 14;
   const humanCanRiichi = (() => {
     if (state.phase !== 'playing' || state.currentPlayer !== 0) return false;
     const p = state.players[0];
@@ -225,6 +265,32 @@ const App: React.FC = () => {
 
   // Keyboard input
   useInput((input, key) => {
+    if (startupMode === 'choose') {
+      if (input === 'r' || key.return) {
+        if (savedState) dispatch({ type: 'RESTORE', state: savedState } as GameAction);
+        setStartupMode('ready');
+        return;
+      }
+      if (input === 'n' || input === 'q') {
+        clearSave();
+        dispatch({ type: 'START_GAME' });
+        setSelectedIndex(0);
+        setStartupMode('ready');
+        return;
+      }
+      return;
+    }
+
+    if (startupMode !== 'ready') return;
+
+    if (state.phase === 'roundEnded') {
+      if (input === 'n' || input === ' ' || key.return) {
+        dispatch({ type: 'NEXT_ROUND' });
+        setSelectedIndex(0);
+      }
+      return;
+    }
+
     // Game over screen
     if (state.phase === 'ended') {
       if (input === 'q' || input === ' ') {
@@ -285,8 +351,14 @@ const App: React.FC = () => {
       return;
     }
 
-    if (key.leftArrow) { setSelectedIndex(prev => Math.max(0, prev - 1)); return; }
-    if (key.rightArrow) { setSelectedIndex(prev => Math.min(hand.length - 1, prev + 1)); return; }
+    if (key.leftArrow) {
+      setSelectedIndex(prev => hand.length > 0 ? (prev - 1 + hand.length) % hand.length : 0);
+      return;
+    }
+    if (key.rightArrow) {
+      setSelectedIndex(prev => hand.length > 0 ? (prev + 1) % hand.length : 0);
+      return;
+    }
 
     const num = parseInt(input, 10);
     if (num >= 1 && num <= hand.length) { setSelectedIndex(num - 1); return; }
@@ -309,11 +381,37 @@ const App: React.FC = () => {
     }
   });
 
-  if (state.phase === 'ended') {
+  if (startupMode === 'loading') {
+    return (
+      <Box padding={1}>
+        <Text>読み込み中...</Text>
+      </Box>
+    );
+  }
+
+  if (startupMode === 'choose') {
+    return (
+      <Box flexDirection="column" padding={1}>
+        <Text bold>保存された対戦があります</Text>
+        <Text>前回の続きから再開するか、新しい東風戦を始めるか選んでください。</Text>
+        <Box marginTop={1} flexDirection="column">
+          <Text color="green">R / Enter: 復元</Text>
+          <Text color="yellow">N / Q: 新規開始して保存を破棄</Text>
+        </Box>
+      </Box>
+    );
+  }
+
+  if (state.phase === 'ended' || state.phase === 'roundEnded') {
     const sr = state.lastScoreResult;
     return (
       <Box flexDirection="column" padding={1}>
         <Text bold>{state.message}</Text>
+        <Text dimColor>
+          {state.phase === 'roundEnded'
+            ? `次局: ${roundName(state.roundNumber)} / 親: P${state.dealer + 1} / 本場: ${state.honba} / 供託: ${state.riichiSticks}`
+            : '対戦終了'}
+        </Text>
         {sr && (
           <>
             <Text dimColor>{'─'.repeat(40)}</Text>
@@ -332,12 +430,24 @@ const App: React.FC = () => {
         <Box marginTop={1}>
           {[0, 1, 2, 3].map(i => (
             <Box key={i} marginRight={2}>
-              <Text>{['東家(あなた)', '南家', '西家', '北家'][i]}: </Text>
+              <Text>{i === 0 ? 'あなた' : `P${i + 1}`}({WIND_NAMES[state.players[i].wind]}家): </Text>
               <Text bold={true} color={i === state.winner ? 'yellow' : 'white'}>{state.players[i].points}点</Text>
             </Box>
           ))}
         </Box>
-        <Text dimColor>スペースキーまたはQで新しいゲーム</Text>
+        {state.finalRanking && (
+          <Box flexDirection="column" marginTop={1}>
+            <Text bold>最終順位</Text>
+            {state.finalRanking.map((player, index) => (
+              <Text key={player}>
+                {index + 1}位: {player === 0 ? 'あなた' : `P${player + 1}`} {state.players[player].points}点
+              </Text>
+            ))}
+          </Box>
+        )}
+        <Text dimColor>
+          {state.phase === 'roundEnded' ? 'N / Enter / Space: 次局へ' : 'SpaceまたはQで新しいゲーム'}
+        </Text>
       </Box>
     );
   }
@@ -348,18 +458,21 @@ const App: React.FC = () => {
     return (
       <Box flexDirection="column" padding={1}>
         <OpponentInfo
-          wind={`${WIND_NAMES[(state.currentPlayer + 2) % 4]!}家`}
+          wind={`${WIND_NAMES[state.players[2].wind]}家`}
           discards={state.players[2].discards} riichi={state.players[2].riichi}
+          melds={state.players[2].melds}
           points={state.players[2].points} tileCount={state.players[2].hand.length}
         />
         <OpponentInfo
-          wind={`${WIND_NAMES[(state.currentPlayer + 1) % 4]!}家`}
+          wind={`${WIND_NAMES[state.players[1].wind]}家`}
           discards={state.players[1].discards} riichi={state.players[1].riichi}
+          melds={state.players[1].melds}
           points={state.players[1].points} tileCount={state.players[1].hand.length}
         />
         <OpponentInfo
-          wind={`${WIND_NAMES[(state.currentPlayer + 3) % 4]!}家`}
+          wind={`${WIND_NAMES[state.players[3].wind]}家`}
           discards={state.players[3].discards} riichi={state.players[3].riichi}
+          melds={state.players[3].melds}
           points={state.players[3].points} tileCount={state.players[3].hand.length}
         />
         <Text dimColor>{'─'.repeat(40)}</Text>
@@ -368,7 +481,15 @@ const App: React.FC = () => {
           {state.lastDiscard ? <Text color={tileColor(state.lastDiscard.tile)}>{formatTile(state.lastDiscard.tile)}</Text> : null}
         </Box>
         <Text dimColor>{'─'.repeat(40)}</Text>
-        <Text bold>東家 (あなた) ({state.players[0].points}点)</Text>
+        <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) ({state.players[0].points}点)</Text>
+        <Box>
+          <Text bold>あなたの捨て牌: </Text>
+          <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
+        </Box>
+        <Box>
+          <Text bold>あなたの副露: </Text>
+          <MeldView melds={state.players[0].melds} />
+        </Box>
         <HandView tiles={hand} selectedIndex={selectedIndex} riichi={state.players[0].riichi} isHuman={true} />
         {humanOptions.length > 0 && (
           <ClaimMenu options={humanOptions} selectedIndex={claimSelectedIndex} />
@@ -381,20 +502,24 @@ const App: React.FC = () => {
   // Normal play screen
   return (
     <Box flexDirection="column" padding={1}>
+      <Text bold>{roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}</Text>
       <Box flexDirection="column">
         <OpponentInfo
-          wind={`${WIND_NAMES[(state.currentPlayer + 2) % 4]!}家`}
+          wind={`${WIND_NAMES[state.players[2].wind]}家`}
           discards={state.players[2].discards} riichi={state.players[2].riichi}
+          melds={state.players[2].melds}
           points={state.players[2].points} tileCount={state.players[2].hand.length}
         />
         <OpponentInfo
-          wind={`${WIND_NAMES[(state.currentPlayer + 1) % 4]!}家`}
+          wind={`${WIND_NAMES[state.players[1].wind]}家`}
           discards={state.players[1].discards} riichi={state.players[1].riichi}
+          melds={state.players[1].melds}
           points={state.players[1].points} tileCount={state.players[1].hand.length}
         />
         <OpponentInfo
-          wind={`${WIND_NAMES[(state.currentPlayer + 3) % 4]!}家`}
+          wind={`${WIND_NAMES[state.players[3].wind]}家`}
           discards={state.players[3].discards} riichi={state.players[3].riichi}
+          melds={state.players[3].melds}
           points={state.players[3].points} tileCount={state.players[3].hand.length}
         />
       </Box>
@@ -417,9 +542,17 @@ const App: React.FC = () => {
       <Box><Text dimColor>山残り: {state.wall.length} / リーチ棒: {state.riichiSticks}</Text></Box>
       <Text dimColor>{'─'.repeat(40)}</Text>
       <Box marginTop={1} marginBottom={1}>
-        <Text bold>東家 (あなた) </Text>
+        <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
         <Text dimColor>({state.players[0].points}点) </Text>
         {state.players[0].riichi && <Text color="yellow">リーチ中 </Text>}
+      </Box>
+      <Box marginBottom={1}>
+        <Text bold>あなたの捨て牌: </Text>
+        <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
+      </Box>
+      <Box marginBottom={1}>
+        <Text bold>あなたの副露: </Text>
+        <MeldView melds={state.players[0].melds} />
       </Box>
       <HandView tiles={hand} selectedIndex={selectedIndex} riichi={state.players[0].riichi} isHuman={true} />
       <ActionBar canTsumo={humanCanTsumo} canRiichi={humanCanRiichi} message={state.message} />

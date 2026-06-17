@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { gameReducer, createInitialState, collectClaims, sortClaimsByPriority } from './GameState.js';
-import type { PlayerData } from './GameState.js';
-import { Suit, type Tile } from '../game/types.js';
+import { gameReducer, createInitialState, collectClaims, sortClaimsByPriority, processAiTurn } from './GameState.js';
+import type { GameState, PlayerData } from './GameState.js';
+import { MeldType, Suit, type Tile } from '../game/types.js';
 
 function m(v: number): Tile {
   return { suit: Suit.Man, value: v as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 };
@@ -20,6 +20,27 @@ function makeTestPlayer(hand: Tile[]): PlayerData {
 
 function makePlayers(p0: PlayerData, p1: PlayerData, p2: PlayerData, p3: PlayerData) {
   return [p0, p1, p2, p3] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+}
+
+function winningTanyao13(): Tile[] {
+  return [
+    m(2), m(3), m(4),
+    p(5), p(6), p(7),
+    s(3), s(4), s(5),
+    p(2), p(3), p(4),
+    p(5),
+  ];
+}
+
+function startedState(overrides: Partial<GameState> = {}): GameState {
+  return {
+    ...gameReducer(createInitialState(), { type: 'START_GAME' }),
+    ...overrides,
+  };
+}
+
+function pointsTotal(state: GameState): number {
+  return state.players.reduce((sum, player) => sum + player.points, 0) + state.riichiSticks * 1000;
 }
 
 describe('collectClaims', () => {
@@ -141,5 +162,212 @@ describe('gameReducer claims', () => {
         expect(afterPon.players[ponOpt.player].melds.length).toBeGreaterThan(0);
       }
     }
+  });
+});
+
+describe('east-only match progression', () => {
+  it('starts an east-only match at east 1 with the first dealer', () => {
+    const state = gameReducer(createInitialState(), { type: 'START_GAME' });
+    expect(state.roundNumber).toBe(1);
+    expect(state.dealer).toBe(0);
+    expect(state.currentPlayer).toBe(0);
+    expect(state.players[0].wind).toBe(0);
+  });
+
+  it('advances to the next dealer after a child ron', () => {
+    const start = startedState({
+      dealer: 0,
+      roundNumber: 1,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer(winningTanyao13()), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      lastDiscard: { tile: p(5), player: 0 },
+      honba: 2,
+      riichiSticks: 0,
+    });
+
+    const beforeTotal = pointsTotal(start);
+    const afterRon = gameReducer(start, { type: 'RON', winner: 1 });
+
+    expect(afterRon.phase).toBe('roundEnded');
+    expect(afterRon.dealer).toBe(1);
+    expect(afterRon.roundNumber).toBe(2);
+    expect(afterRon.honba).toBe(0);
+    expect(pointsTotal(afterRon)).toBe(beforeTotal);
+
+    const next = gameReducer(afterRon, { type: 'NEXT_ROUND' });
+    expect(next.phase).toBe('playing');
+    expect(next.currentPlayer).toBe(1);
+    expect(next.players[1].wind).toBe(0);
+  });
+
+  it('keeps the dealer and increments honba after dealer tsumo', () => {
+    const start = startedState({
+      dealer: 0,
+      roundNumber: 2,
+      players: makePlayers(
+        { ...makeTestPlayer([...winningTanyao13(), p(5)]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      lastDrawnTile: p(5),
+      honba: 1,
+      riichiSticks: 0,
+    });
+
+    const beforeTotal = pointsTotal(start);
+    const afterTsumo = gameReducer(start, { type: 'TSUMO', player: 0 });
+
+    expect(afterTsumo.phase).toBe('roundEnded');
+    expect(afterTsumo.dealer).toBe(0);
+    expect(afterTsumo.roundNumber).toBe(2);
+    expect(afterTsumo.honba).toBe(2);
+    expect(pointsTotal(afterTsumo)).toBe(beforeTotal);
+  });
+
+  it('ends the match when the final dealer wins while already top', () => {
+    const start = startedState({
+      dealer: 3,
+      roundNumber: 4,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 22000 },
+        { ...makeTestPlayer([]), points: 24000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([...winningTanyao13(), p(5)]), points: 29000 },
+      ),
+      lastDrawnTile: p(5),
+    });
+
+    const afterTsumo = gameReducer(start, { type: 'TSUMO', player: 3 });
+
+    expect(afterTsumo.phase).toBe('ended');
+    expect(afterTsumo.finalRanking?.[0]).toBe(3);
+  });
+});
+
+describe('processAiTurn wall movement', () => {
+  it('returns DRAW for a normal AI turn so the reducer consumes one wall tile', () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer([m(1), m(2), m(3), m(4), m(5), m(6), p(1), p(2), p(3), p(4), p(5), s(1), s(2)]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+    expect(action).toEqual({ type: 'DRAW', player: 1 });
+
+    const afterDraw = gameReducer(state, action!);
+    expect(afterDraw.wall.length).toBe(state.wall.length - 1);
+    expect(afterDraw.players[1].hand).toHaveLength(14);
+  });
+
+  it('does not draw for an AI discard after an open claim', () => {
+    const meld = { type: MeldType.Poon, tiles: [m(9), m(9), m(9)], calledTile: m(9) };
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer([m(1), m(2), m(3), m(4), m(5), p(1), p(2), p(3), s(1), s(2), s(3)]), melds: [meld] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+    expect(action?.type).toBe('DISCARD');
+
+    const afterDiscard = gameReducer(state, action!);
+    expect(afterDiscard.wall.length).toBe(state.wall.length);
+  });
+
+  it('draws on the next AI turn after an open-hand discard', () => {
+    const meld = { type: MeldType.Poon, tiles: [m(9), m(9), m(9)], calledTile: m(9) };
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer([m(1), m(2), m(3), m(4), p(1), p(2), p(3), s(1), s(2), s(3)]), melds: [meld] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+    expect(action).toEqual({ type: 'DRAW', player: 1 });
+  });
+});
+
+describe('claiming turn ownership', () => {
+  it('does not auto-pass while the human has a claim option', () => {
+    const players = makePlayers(
+      makeTestPlayer([m(4), m(4)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: 'claiming',
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(4), player: 1 },
+      claimOptions: collectClaims(m(4), 1, players),
+    });
+
+    const { action } = processAiTurn(state);
+    expect(action).toBeNull();
+  });
+
+  it('processes the human pon option even when an AI pon option is listed first', () => {
+    const players = makePlayers(
+      makeTestPlayer([m(4), m(4)]),
+      makeTestPlayer([]),
+      makeTestPlayer([m(4), m(4)]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: 'claiming',
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(4), player: 1 },
+      claimOptions: sortClaimsByPriority(collectClaims(m(4), 1, players), 1),
+    });
+
+    expect(state.claimOptions[0]?.player).toBe(2);
+    const afterPon = gameReducer(state, { type: 'PON', player: 0 });
+
+    expect(afterPon.currentPlayer).toBe(0);
+    expect(afterPon.players[0].melds).toHaveLength(1);
+    expect(afterPon.players[2].melds).toHaveLength(0);
+  });
+
+  it('processes the human daiminkan option even when an AI daiminkan option is listed first', () => {
+    const players = makePlayers(
+      makeTestPlayer([p(9), p(9), p(9)]),
+      makeTestPlayer([]),
+      makeTestPlayer([p(9), p(9), p(9)]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: 'claiming',
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: p(9), player: 1 },
+      claimOptions: sortClaimsByPriority(collectClaims(p(9), 1, players), 1),
+    });
+
+    expect(state.claimOptions[0]?.player).toBe(2);
+    const afterKan = gameReducer(state, { type: 'DAIMINKAN', player: 0 });
+
+    expect(afterKan.currentPlayer).toBe(0);
+    expect(afterKan.players[0].melds).toHaveLength(1);
+    expect(afterKan.players[2].melds).toHaveLength(0);
   });
 });
