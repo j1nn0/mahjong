@@ -272,14 +272,14 @@ const App: React.FC = () => {
             <Text dimColor>{'─'.repeat(40)}</Text>
             <Box flexDirection="column">
               <Text bold>-- スコア --</Text>
-              <Text>符: {sr.fu} 飜数: {sr.han}</Text>
+              <Text>役: {sr.yaku.filter(y => !y.yakuman).map(y => y.name).join('・')}</Text>
               {sr.yakuman > 0 && <Text color="red" bold>役満 ×{sr.yakuman}</Text>}
-              {sr.limit !== 'none' && <Text>満貫区分: {sr.limit}</Text>}
-              <Text bold>役: {sr.yaku.map(y => y.name).join('・')}</Text>
+              <Text>飜: {sr.han - sr.doraHan} (役) + {sr.doraHan} (ドラ) = {sr.han}</Text>
+              <Text>符: {sr.fu}</Text>
+              {sr.limit !== 'none' && sr.limit !== 'yakuman' && <Text>満貫区分: {sr.limit}</Text>}
               <Text>支払い: {sr.payment.from.map(f => `P${f.player + 1}: ${f.amount}点`).join(', ')}</Text>
               <Text bold color="yellow">獲得: {sr.score}点</Text>
             </Box>
-            <Text dimColor>{'─'.repeat(40)}</Text>
           </>
         )}
         <Box marginTop={1}>
@@ -352,6 +352,12 @@ const App: React.FC = () => {
         />
       </Box>
       <Text dimColor>{'─'.repeat(40)}</Text>
+      <Box>
+        <Text dimColor>ドラ表示: </Text>
+        {Array.from({ length: state.deadWall.doraCount }, (_, i) => (
+          <Text key={i} color="cyan">{formatTile(state.deadWall.tiles[i]!)} </Text>
+        ))}
+      </Box>
       <Box marginTop={1} marginBottom={1}>
         <Text bold>捨て牌: </Text>
         {state.lastDiscard ? (

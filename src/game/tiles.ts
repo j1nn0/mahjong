@@ -196,3 +196,75 @@ function tileSortKey(tile: Tile): number {
     case Suit.Dragon: return 400 + tile.value;
   }
 }
+
+// ── Dora ──────────────────────────────────────────────────────────
+
+/**
+ * ドラ表示牌から1つ進んだ牌を返す。
+ * 数牌: 1→2→...→9→1
+ * 風牌: 東→南→西→北→東
+ * 三元牌: 白→發→中→白
+ */
+export function nextDoraTile(indicator: Tile): Tile {
+  if (indicator.suit === Suit.Wind) {
+    const nextWind = ((indicator.value as number) + 1) % 4;
+    return { suit: Suit.Wind, value: nextWind as Wind, red: false };
+  }
+  if (indicator.suit === Suit.Dragon) {
+    const nextDragon = ((indicator.value as number) + 1) % 3;
+    return { suit: Suit.Dragon, value: nextDragon as Dragon, red: false };
+  }
+  const v = indicator.value as number;
+  const nextValue = v >= 9 ? 1 : v + 1;
+  return { suit: indicator.suit, value: nextValue as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red: false };
+}
+
+/**
+ * 手牌中のドラ・赤ドラをカウント。
+ * doraIndicators: 表ドラ表示牌の配列
+ * uraDoraIndicators: 裏ドラ表示牌の配列 (リーチ和了時のみ)
+ * isRiichi: リーチ和了か (裏ドラ有効)
+ */
+export function countDora(
+  handTiles: readonly Tile[],
+  doraIndicators: readonly Tile[],
+  isRiichi: boolean,
+  uraDoraIndicators?: readonly Tile[],
+): number {
+  let doraCount = 0;
+
+  // 表ドラ
+  for (const indicator of doraIndicators) {
+    const doraTile = nextDoraTile(indicator);
+    doraCount += handTiles.filter(t => t.suit === doraTile.suit && t.value === doraTile.value).length;
+  }
+
+  // 裏ドラ (リーチ和了のみ)
+  if (isRiichi && uraDoraIndicators) {
+    for (const indicator of uraDoraIndicators) {
+      const doraTile = nextDoraTile(indicator);
+      doraCount += handTiles.filter(t => t.suit === doraTile.suit && t.value === doraTile.value).length;
+    }
+  }
+
+  // 赤ドラ
+  doraCount += handTiles.filter(t => t.red).length;
+
+  return doraCount;
+}
+
+/**
+ * 王牌からドラ表示牌の一覧を取得。
+ * doraCount: 現在めくられているドラ表示牌の数
+ */
+export function getDoraIndicators(deadWall: readonly Tile[], doraCount: number): readonly Tile[] {
+  return deadWall.slice(0, doraCount);
+}
+
+/**
+ * 王牌から裏ドラ表示牌の一覧を取得（リーチ和了時のみ有効）。
+ * 裏ドラはドラ表示牌の5つ後ろから。
+ */
+export function getUraDoraIndicators(deadWall: readonly Tile[], doraCount: number): readonly Tile[] {
+  return deadWall.slice(5, 5 + doraCount);
+}

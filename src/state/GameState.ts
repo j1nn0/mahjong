@@ -1,5 +1,5 @@
 import { type Tile, type Meld, MeldType, Wind, Suit } from '../game/types.js';
-import { buildWall, drawFromWall, sortHand, formatTile } from '../game/tiles.js';
+import { buildWall, drawFromWall, sortHand, formatTile, getDoraIndicators, getUraDoraIndicators } from '../game/tiles.js';
 import { tilesToCounts, isWinningHand, findTenpaiTiles, tileToIndex, indexToTile } from '../game/agari.js';
 import { fullScore, type ScoreResult } from '../game/scoring.js';
 
@@ -84,6 +84,12 @@ function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
   if (idx === -1) return [...hand];
   return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
 }
+
+/** 現在のstateからドラパラメータを抽出 */
+const doraParams = (state: GameState) => ({
+  doraIndicators: getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
+  uraDoraIndicators: getUraDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
+});
 
 // ── Claim checking ─────────────────────────────────────────────────
 
@@ -326,14 +332,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             roundWind: state.roundWind,
             playerSeat: winner,
             isRiichi: true,
+            riichiSticks: state.riichiSticks,
+            honba: state.honba,
+            ...doraParams(state),
             isDoubleRiichi: false,
             isIppatsu: false,
             isHaitei: false,
             isHoutei: false,
             isRinshan: false,
             isChankan: false,
-            riichiSticks: state.riichiSticks,
-            honba: state.honba,
           });
           if (!score) {
             return {
@@ -494,14 +501,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         roundWind: state.roundWind,
         playerSeat: winner,
         isRiichi: state.players[winner].riichi,
+        riichiSticks: state.riichiSticks,
+        honba: state.honba,
+        ...doraParams(state),
         isDoubleRiichi: false,
         isIppatsu: false,
         isHaitei: false,
         isHoutei: false,
         isRinshan: false,
         isChankan: false,
-        riichiSticks: state.riichiSticks,
-        honba: state.honba,
       });
       if (!score) {
         return { ...state, message: 'スコア計算できません' };
@@ -533,14 +541,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         roundWind: state.roundWind,
         playerSeat: player,
         isRiichi: state.players[player].riichi,
+        riichiSticks: state.riichiSticks,
+        honba: state.honba,
+        ...doraParams(state),
         isDoubleRiichi: false,
         isIppatsu: false,
         isHaitei: false,
         isHoutei: false,
         isRinshan: false,
         isChankan: false,
-        riichiSticks: state.riichiSticks,
-        honba: state.honba,
       });
       if (!score) {
         return { ...state, message: 'スコア計算できません' };

@@ -1,5 +1,6 @@
 import { type Tile, type Meld, Suit } from './types.js';
 import { type HandGroups, type YakuResult, detectYaku, totalHan, totalYakuman, YakuId } from './yaku.js';
+import { countDora } from './tiles.js';
 
 // ── Scoring result ────────────────────────────────────────────────
 
@@ -14,6 +15,7 @@ export interface ScoreResult {
   yakuman: number;
   fu: number;
   basePoints: number;
+  doraHan: number;
   limit: 'none' | 'mangan' | 'haneman' | 'baiman' | 'sanbaiman' | 'yakuman';
   score: number;
   payment: Payment;
@@ -87,6 +89,8 @@ export function calculateScore(
   isDealer: boolean,
   riichiSticks: number,
   honba: number,
+  doraIndicators?: readonly Tile[],
+  uraDoraIndicators?: readonly Tile[],
 ): ScoreResult {
   // Yakuman
   const yakumanCount = totalYakuman(detectedYaku);
@@ -95,15 +99,22 @@ export function calculateScore(
     const payment = calcPayment(isDealer, basePoints, riichiSticks, honba);
     return {
       yaku: detectedYaku, han: 0, yakuman: yakumanCount,
-      fu: 0, basePoints, limit: 'yakuman',
+      fu: 0, basePoints, doraHan: 0, limit: 'yakuman',
       score: payment.winnerGets + riichiSticks * 1000 + honba * 300,
       payment,
     };
   }
 
   // Normal score
-  const han = totalHan(detectedYaku);
+  const yakuHan = totalHan(detectedYaku);
   const fu = calculateFu(handGroups, detectedYaku, handGroups.groups.length > 0 ? 0 : 0, handGroups.groups.length > 0 ? 0 : 0);
+
+  // Dora count (not included in hand yaku - purely additive)
+  const doraIndicatorsList = doraIndicators ?? [];
+  const uraDoraIndicatorsList = uraDoraIndicators ?? [];
+  const allHandTiles = [...handGroups.groups.flatMap(g => g.tiles)];
+  const doraCounted = countDora(allHandTiles, doraIndicatorsList, true, uraDoraIndicatorsList);
+  const han = yakuHan + doraCounted;
 
   let basePoints = fu * Math.pow(2, han + 2);
   let limit: ScoreResult['limit'] = 'none';
@@ -128,7 +139,7 @@ export function calculateScore(
   const payment = calcPayment(isDealer, basePoints, riichiSticks, honba);
   const score = payment.winnerGets;
 
-  return { yaku: detectedYaku, han, yakuman: 0, fu, basePoints, limit, score, payment };
+  return { yaku: detectedYaku, han, yakuman: 0, fu, basePoints, doraHan: doraCounted, limit, score, payment };
 }
 
 function calcPayment(
@@ -173,6 +184,8 @@ export interface ScoreParams {
   isChankan: boolean;
   riichiSticks: number;
   honba: number;
+  doraIndicators?: readonly Tile[];
+  uraDoraIndicators?: readonly Tile[];
 }
 
 export function fullScore(params: ScoreParams): ScoreResult | null {
@@ -195,5 +208,5 @@ export function fullScore(params: ScoreParams): ScoreResult | null {
   if (!groups || yaku.length === 0) return null;
 
   const isDealer = params.playerSeat === 0;
-  return calculateScore(groups, yaku, isDealer, params.riichiSticks, params.honba);
+  return calculateScore(groups, yaku, isDealer, params.riichiSticks, params.honba, params.doraIndicators, params.uraDoraIndicators);
 }
