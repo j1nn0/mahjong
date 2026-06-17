@@ -3,7 +3,7 @@ import { Text, Box, useInput } from 'ink';
 import { createInitialState, gameReducer, normalizeGameState, processAiTurn } from '../state/GameState.js';
 import { saveGame, loadGame, clearSave } from '../state/persistence.js';
 import type { ClaimOption, GameAction, GameState } from '../state/GameState.js';
-import { formatTile, tileToUnicode } from '../game/tiles.js';
+import { formatTile, getDoraIndicators, tileToUnicode } from '../game/tiles.js';
 import { isWinningHand, tilesToCounts } from '../game/agari.js';
 import { type Meld, MeldType, type Tile, Suit } from '../game/types.js';
 
@@ -90,6 +90,31 @@ const MeldView: React.FC<MeldViewProps> = ({ melds }) => {
         </Text>
       ))}
     </Text>
+  );
+};
+
+// ── Dora display ─────────────────────────────────────────────────
+
+interface DoraViewProps {
+  state: GameState;
+}
+
+const DoraView: React.FC<DoraViewProps> = ({ state }) => {
+  const indicators = getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount);
+
+  return (
+    <Box>
+      <Text bold>ドラ表示: </Text>
+      {indicators.length > 0 ? (
+        indicators.map((tile, i) => (
+          <Box key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`} width={3}>
+            <Text color={tileColor(tile)}>{formatTile(tile)}</Text>
+          </Box>
+        ))
+      ) : (
+        <Text dimColor>--</Text>
+      )}
+    </Box>
   );
 };
 
@@ -449,6 +474,7 @@ const App: React.FC = () => {
             ? `次局: ${roundName(state.roundNumber)} / 親: P${state.dealer + 1} / 本場: ${state.honba} / 供託: ${state.riichiSticks}`
             : '対戦終了'}
         </Text>
+        <DoraView state={state} />
         {sr && (
           <>
             <Text dimColor>{'─'.repeat(40)}</Text>
@@ -494,6 +520,9 @@ const App: React.FC = () => {
     const humanOptions = state.claimOptions.filter(c => c.player === 0);
     return (
       <Box flexDirection="column" padding={1}>
+        <Text bold>{roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}</Text>
+        <DoraView state={state} />
+        <Text dimColor>{'─'.repeat(40)}</Text>
         <OpponentInfo
           wind={`${WIND_NAMES[state.players[2].wind]}家`}
           discards={state.players[2].discards} riichi={state.players[2].riichi}
@@ -540,6 +569,7 @@ const App: React.FC = () => {
   return (
     <Box flexDirection="column" padding={1}>
       <Text bold>{roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}</Text>
+      <DoraView state={state} />
       <Box flexDirection="column">
         <OpponentInfo
           wind={`${WIND_NAMES[state.players[2].wind]}家`}
@@ -561,13 +591,6 @@ const App: React.FC = () => {
         />
       </Box>
       <Text dimColor>{'─'.repeat(40)}</Text>
-      <Box>
-        {Array.from({ length: state.deadWall.doraCount }, (_, i) => (
-          <Box key={i} width={3}>
-            <Text color="cyan">{formatTile(state.deadWall.tiles[i]!)}</Text>
-          </Box>
-        ))}
-      </Box>
       <Box marginTop={1} marginBottom={1}>
         <Text bold>捨て牌: </Text>
         {state.lastDiscard ? (
