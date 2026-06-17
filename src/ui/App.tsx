@@ -1,7 +1,8 @@
 import React, { useReducer, useEffect, useState } from 'react';
 import { Text, Box, useInput } from 'ink';
 import { createInitialState, gameReducer, processAiTurn } from '../state/GameState.js';
-import type { ClaimOption } from '../state/GameState.js';
+import { saveGame, loadGame, clearSave } from '../state/persistence.js';
+import type { ClaimOption, GameAction } from '../state/GameState.js';
 import { formatTile, tileToUnicode } from '../game/tiles.js';
 import { type Tile, Suit } from '../game/types.js';
 
@@ -138,15 +139,35 @@ const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, message }) =
 // ── Main game component ───────────────────────────────────────────
 
 const WIND_NAMES = ['東', '南', '西', '北'];
-
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
   const [localProcessing, setLocalProcessing] = useState(false);
+  const [restored, setRestored] = useState(false);
 
-  useEffect(() => { dispatch({ type: 'START_GAME' }); }, []);
+  useEffect(() => {
+    // 起動時に保存があれば復元、なければ新規開始
+    const saved = loadGame<ReturnType<typeof createInitialState>>();
+    if (saved && saved.phase !== 'ended') {
+      // dispatchで復元 (gameReducerの初期stateとして使う)
+      dispatch({ type: 'RESTORE', state: saved } as GameAction);
+    } else {
+      dispatch({ type: 'START_GAME' });
+    }
+    setRestored(true);
+  }, []);
 
+  // 状態が変わったら自動セーブ
+  // 状態が変わったら自動セーブ
+  useEffect(() => {
+    if (!restored) return;
+    if (state.phase === 'ended') {
+      clearSave();
+    } else if (state.phase === 'playing' || state.phase === 'claiming') {
+      saveGame(state);
+    }
+  }, [state, restored]);
   // Auto-draw for human
   useEffect(() => {
     if (state.phase !== 'playing') return;

@@ -61,7 +61,8 @@ export type GameAction =
   | { type: 'PASS_CLAIM' }
   | { type: 'RON'; winner: number }
   | { type: 'TSUMO'; player: number }
-  | { type: 'END_ROUND'; message?: string };
+  | { type: 'END_ROUND'; message?: string }
+  | { type: 'RESTORE'; state: GameState };
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -91,6 +92,59 @@ const doraParams = (state: GameState) => ({
   doraIndicators: getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
   uraDoraIndicators: getUraDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
 });
+/** 流局時の聴牌確認と点棒移動 */
+function handleExhaustiveDraw(state: GameState): GameState {
+  const tenpaiList: number[] = [];
+  const notenList: number[] = [];
+
+  for (let i = 0; i < 4; i++) {
+    const p = state.players[i];
+    const allTiles = [...p.hand];
+    for (const meld of p.melds) {
+      allTiles.push(...meld.tiles);
+    }
+    if (findTenpaiTiles(allTiles).length > 0) {
+      tenpaiList.push(i);
+    } else {
+      notenList.push(i);
+    }
+  }
+
+  const newPlayers = [...state.players] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+
+  // 3000点ルール: 不聴者→聴牌者への支払い
+  // 不聴の親(0)は1500×(聴牌人数)、子は1000×(聴牌人数)をプールに支払い
+  // プールを聴牌者で均等分割
+  if (tenpaiList.length > 0 && notenList.length > 0) {
+    let pool = 0;
+    for (const n of notenList) {
+      const payment = (n === 0 ? 1500 : 1000) * tenpaiList.length;
+      pool += payment;
+      newPlayers[n] = updPlayer(newPlayers[n], {
+        points: newPlayers[n].points - payment,
+      });
+    }
+    const perTenpai = Math.floor(pool / tenpaiList.length / 100) * 100;
+    for (const t of tenpaiList) {
+      newPlayers[t] = updPlayer(newPlayers[t], {
+        points: newPlayers[t].points + perTenpai,
+      });
+    }
+  }
+
+  const tenpaiStr = tenpaiList.map(i => `${i === 0 ? 'あなた' : `P${i + 1}`}`).join('・');
+  const notenStr = notenList.map(i => `${i === 0 ? 'あなた' : `P${i + 1}`}`).join('・');
+  const detail = tenpaiList.length > 0
+    ? `聴牌: ${tenpaiStr}  不聴: ${notenStr || 'なし'}`
+    : '全員不聴';
+
+  return {
+    ...state,
+    players: newPlayers,
+    phase: 'ended',
+    message: `流局: ${detail}`,
+  };
+}
 
 // ── Claim checking ─────────────────────────────────────────────────
 
@@ -225,6 +279,8 @@ export function processAiTurn(state: GameState): { state: GameState; action: Gam
 
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
+    case 'RESTORE':
+      return (action as { type: 'RESTORE'; state: GameState }).state;
     case 'START_GAME': {
       const wallData = buildWall();
       const p0 = makePlayer(Wind.Ton, 25000);
@@ -262,7 +318,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'DRAW': {
       if (state.wall.length === 0) {
-        return { ...state, phase: 'ended', message: '流局: 牌山がなくなりました' };
+        // 流局処理: 聴牌確認と点棒移動
+        return handleExhaustiveDraw(state);
       }
       const { drawn, remaining } = drawFromWall(state.wall, 1);
       const player = state.players[action.player];
