@@ -1,7 +1,8 @@
 import { type Tile, type Meld, MeldType, Wind, Suit } from '../game/types.js';
 import { buildWall, drawFromWall, sortHand, formatTile, getDoraIndicators, getUraDoraIndicators } from '../game/tiles.js';
-import { tilesToCounts, isWinningHand, findTenpaiTiles, tileToIndex, indexToTile } from '../game/agari.js';
+import { tilesToCounts, isWinningHand, findTenpaiTiles, indexToTile } from '../game/agari.js';
 import { fullScore, type ScoreResult } from '../game/scoring.js';
+import { aiChooseDiscard } from '../game/ai.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -185,39 +186,6 @@ export function sortClaimsByPriority(
   });
 }
 
-// ── AI: simple discard strategy ────────────────────────────────────
-
-function aiChooseDiscard(hand: readonly Tile[]): Tile {
-  const sorted = sortHand([...hand]);
-  const counts = new Map<string, number>();
-  for (const t of sorted) {
-    const key = `${t.suit}:${t.value}`;
-    counts.set(key, (counts.get(key) ?? 0) + 1);
-  }
-
-  function isolationScore(tile: Tile): number {
-    const key = `${tile.suit}:${tile.value}`;
-    const count = counts.get(key) ?? 0;
-    if (count >= 2) return 50;
-    if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) return 0;
-
-    const idx = tileToIndex(tile);
-    let score = 10;
-    if (idx % 9 > 0 && sorted.some(t => tileToIndex(t) === idx - 1)) score += 15;
-    if (idx % 9 < 8 && sorted.some(t => tileToIndex(t) === idx + 1)) score += 15;
-    if (idx % 9 > 1 && sorted.some(t => tileToIndex(t) === idx - 2)) score += 5;
-    if (idx % 9 < 7 && sorted.some(t => tileToIndex(t) === idx + 2)) score += 5;
-    return score;
-  }
-
-  let worst = sorted[0]!;
-  let worstScore = isolationScore(worst);
-  for (const t of sorted.slice(1)) {
-    const s = isolationScore(t);
-    if (s < worstScore) { worst = t; worstScore = s; }
-  }
-  return worst;
-}
 
 export function processAiTurn(state: GameState): { state: GameState; action: GameAction | null } {
   if (state.phase === 'claiming') {
@@ -241,7 +209,9 @@ export function processAiTurn(state: GameState): { state: GameState; action: Gam
       return { state: afterDraw, action: { type: 'TSUMO', player: state.currentPlayer } };
     }
 
-    const discard = aiChooseDiscard(p.hand);
+    const opponentDiscards = afterDraw.players.map(p => p.discards);
+    const opponentRiichi = afterDraw.players.map(p => p.riichi);
+    const discard = aiChooseDiscard(p.hand, opponentDiscards, opponentRiichi);
     const testHand = removeOneTile(p.hand, discard);
     if (!p.riichi && findTenpaiTiles(testHand).length > 0 && p.points >= 1000) {
       return { state: afterDraw, action: { type: 'DECLARE_RIICHI', player: state.currentPlayer, discardTile: discard } };
