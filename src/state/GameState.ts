@@ -1,4 +1,4 @@
-import { type Tile, type Meld, Wind, Suit } from '../game/types.js';
+import { type Tile, type Meld, MeldType, Wind, Suit } from '../game/types.js';
 import { buildWall, drawFromWall, sortHand, formatTile } from '../game/tiles.js';
 import { tilesToCounts, isWinningHand, findTenpaiTiles, tileToIndex, indexToTile } from '../game/agari.js';
 
@@ -18,6 +18,15 @@ export interface DeadWallState {
   doraCount: number;
 }
 
+export interface ClaimOption {
+  type: 'chi' | 'pon' | 'daiminkan';
+  player: number;
+  tiles: readonly Tile[];
+  calledTile: Tile;
+  meld: Meld;
+  display: string;
+}
+
 export interface GameState {
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData];
   wall: readonly Tile[];
@@ -28,7 +37,8 @@ export interface GameState {
   currentPlayer: number;
   lastDiscard: { readonly tile: Tile; readonly player: number } | null;
   winner: number | null;
-  phase: 'playing' | 'ended';
+  phase: 'playing' | 'claiming' | 'ended';
+  claimOptions: readonly ClaimOption[];
   message: string;
 }
 
@@ -39,6 +49,10 @@ export type GameAction =
   | { type: 'DRAW'; player: number }
   | { type: 'DISCARD'; player: number; tile: Tile }
   | { type: 'DECLARE_RIICHI'; player: number; discardTile: Tile }
+  | { type: 'CHI'; player: number; optionIndex: number }
+  | { type: 'PON'; player: number }
+  | { type: 'DAIMINKAN'; player: number }
+  | { type: 'PASS_CLAIM' }
   | { type: 'RON'; winner: number }
   | { type: 'TSUMO'; player: number }
   | { type: 'END_ROUND'; message?: string };
@@ -48,16 +62,11 @@ export type GameAction =
 function isSameTile(a: Tile, b: Tile): boolean {
   return a.suit === b.suit && a.value === b.value && (a.red ?? false) === (b.red ?? false);
 }
-// ── Helpers ────────────────────────────────────────────────────────
 
 function makePlayer(wind: number, points: number): PlayerData {
   return {
-    hand: [],
-    melds: [],
-    discards: [],
-    riichi: false,
-    points,
-    wind: wind as Wind,
+    hand: [], melds: [], discards: [],
+    riichi: false, points, wind: wind as Wind,
   };
 }
 
@@ -65,18 +74,110 @@ function updPlayer(player: PlayerData, overrides: Partial<PlayerData>): PlayerDa
   return { ...player, ...overrides };
 }
 
-
 function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
   const idx = hand.findIndex(t => isSameTile(t, tile));
   if (idx === -1) return [...hand];
   return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
 }
 
+// ── Claim checking ─────────────────────────────────────────────────
+
+function findChiOptions(discarded: Tile, hand: readonly Tile[], playerNum: number): readonly ClaimOption[] {
+  if (discarded.suit === Suit.Wind || discarded.suit === Suit.Dragon) return [];
+  const value = discarded.value as number;
+  const suit = discarded.suit;
+  const options: ClaimOption[] = [];
+
+  for (let start = Math.max(1, value - 2); start <= Math.min(7, value); start++) {
+    const neededVals = [start, start + 1, start + 2].filter(v => v !== value);
+    const fromHand: Tile[] = [];
+    const remaining = [...hand];
+    for (const nv of neededVals) {
+      const idx = remaining.findIndex(t => t.suit === suit && t.value === nv);
+      if (idx === -1) break;
+      fromHand.push(remaining[idx]!);
+      remaining.splice(idx, 1);
+    }
+    if (fromHand.length === 2) {
+      const meldTiles = [...fromHand, discarded];
+      const meld: Meld = { type: MeldType.Chi, tiles: sortHand([...meldTiles]), calledTile: discarded };
+      options.push({
+        type: 'chi', player: playerNum, tiles: meldTiles, calledTile: discarded, meld,
+        display: `チー ${meldTiles.map(t => formatTile(t)).join('')}`,
+      });
+    }
+  }
+  return options;
+}
+
+function canPonTile(discarded: Tile, hand: readonly Tile[]): boolean {
+  return hand.filter(t => isSameTile(t, discarded)).length >= 2;
+}
+
+function canDaiminkanTile(discarded: Tile, hand: readonly Tile[]): boolean {
+  return hand.filter(t => isSameTile(t, discarded)).length >= 3;
+}
+
+export function collectClaims(
+  discarded: Tile, discarder: number,
+  players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
+): readonly ClaimOption[] {
+  const options: ClaimOption[] = [];
+
+  for (let i = 0; i < 4; i++) {
+    if (i === discarder) continue;
+    const hand = players[i].hand;
+    if (players[i].riichi) continue;
+
+    if (canPonTile(discarded, hand)) {
+      const pair = hand.filter(t => isSameTile(t, discarded)).slice(0, 2);
+      const meldTiles = [...pair, discarded];
+      const meld: Meld = { type: MeldType.Poon, tiles: meldTiles, calledTile: discarded };
+      options.push({
+        type: 'pon', player: i, tiles: meldTiles, calledTile: discarded, meld,
+        display: `ポン ${formatTile(discarded)}`,
+      });
+    }
+
+    if (canDaiminkanTile(discarded, hand)) {
+      const triple = hand.filter(t => isSameTile(t, discarded)).slice(0, 3);
+      const meldTiles = [...triple, discarded];
+      const meld: Meld = { type: MeldType.Kan, tiles: meldTiles, calledTile: discarded };
+      options.push({
+        type: 'daiminkan', player: i, tiles: meldTiles, calledTile: discarded, meld,
+        display: `カン ${formatTile(discarded)}`,
+      });
+    }
+
+    if (i === (discarder + 1) % 4) {
+      options.push(...findChiOptions(discarded, hand, i));
+    }
+  }
+  return options;
+}
+
+export function sortClaimsByPriority(
+  options: readonly ClaimOption[], discarder: number,
+): readonly ClaimOption[] {
+  return [...options].sort((a, b) => {
+    // Pon/kan > chi (even across different players)
+    const aStrong = a.type === 'pon' || a.type === 'daiminkan';
+    const bStrong = b.type === 'pon' || b.type === 'daiminkan';
+    if (aStrong && !bStrong) return -1;
+    if (!aStrong && bStrong) return 1;
+
+    // Within same type group: turn order (closer to discarder first)
+    const turnOrder = [1, 2, 3];
+    const aOrder = turnOrder.indexOf((a.player - discarder + 4) % 4);
+    const bOrder = turnOrder.indexOf((b.player - discarder + 4) % 4);
+    return aOrder - bOrder;
+  });
+}
+
 // ── AI: simple discard strategy ────────────────────────────────────
 
 function aiChooseDiscard(hand: readonly Tile[]): Tile {
   const sorted = sortHand([...hand]);
-
   const counts = new Map<string, number>();
   for (const t of sorted) {
     const key = `${t.suit}:${t.value}`;
@@ -87,10 +188,7 @@ function aiChooseDiscard(hand: readonly Tile[]): Tile {
     const key = `${tile.suit}:${tile.value}`;
     const count = counts.get(key) ?? 0;
     if (count >= 2) return 50;
-
-    if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) {
-      return 0;
-    }
+    if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) return 0;
 
     const idx = tileToIndex(tile);
     let score = 10;
@@ -98,7 +196,6 @@ function aiChooseDiscard(hand: readonly Tile[]): Tile {
     if (idx % 9 < 8 && sorted.some(t => tileToIndex(t) === idx + 1)) score += 15;
     if (idx % 9 > 1 && sorted.some(t => tileToIndex(t) === idx - 2)) score += 5;
     if (idx % 9 < 7 && sorted.some(t => tileToIndex(t) === idx + 2)) score += 5;
-
     return score;
   }
 
@@ -106,40 +203,40 @@ function aiChooseDiscard(hand: readonly Tile[]): Tile {
   let worstScore = isolationScore(worst);
   for (const t of sorted.slice(1)) {
     const s = isolationScore(t);
-    if (s < worstScore) {
-      worst = t;
-      worstScore = s;
-    }
+    if (s < worstScore) { worst = t; worstScore = s; }
   }
   return worst;
 }
 
-/** AIの手番を自動処理する。新しいGameStateと、AIが行ったアクションを返す */
 export function processAiTurn(state: GameState): { state: GameState; action: GameAction | null } {
+  if (state.phase === 'claiming') {
+    const aiClaims = state.claimOptions.filter(c => c.player !== 0);
+    if (aiClaims.length > 0) {
+      const claim = aiClaims[0]!;
+      if (claim.type === 'chi') return { state, action: { type: 'CHI', player: claim.player, optionIndex: 0 } };
+      if (claim.type === 'pon') return { state, action: { type: 'PON', player: claim.player } };
+      if (claim.type === 'daiminkan') return { state, action: { type: 'DAIMINKAN', player: claim.player } };
+    }
+    return { state, action: { type: 'PASS_CLAIM' } };
+  }
+
   const player = state.players[state.currentPlayer];
-  const hand = player.hand;
-
-  // AI draws if they have 13 tiles (not 14). The DRAW reducer adds one tile.
-  if (hand.length === 13) {
+  if (player.hand.length === 13) {
     const drawAction: GameAction = { type: 'DRAW', player: state.currentPlayer };
-    let afterDraw = gameReducer(state, drawAction);
-
+    const afterDraw = gameReducer(state, drawAction);
     const p = afterDraw.players[state.currentPlayer];
-    // Check tsumo
+
     if (isWinningHand(tilesToCounts(p.hand))) {
       return { state: afterDraw, action: { type: 'TSUMO', player: state.currentPlayer } };
     }
 
-    // Decide on riichi
     const discard = aiChooseDiscard(p.hand);
     const testHand = removeOneTile(p.hand, discard);
     if (!p.riichi && findTenpaiTiles(testHand).length > 0 && p.points >= 1000) {
       return { state: afterDraw, action: { type: 'DECLARE_RIICHI', player: state.currentPlayer, discardTile: discard } };
     }
-
     return { state: afterDraw, action: { type: 'DISCARD', player: state.currentPlayer, tile: discard } };
   }
-
   return { state, action: null };
 }
 
@@ -149,7 +246,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'START_GAME': {
       const wallData = buildWall();
-
       const p0 = makePlayer(Wind.Ton, 25000);
       const p1 = makePlayer(Wind.Nan, 25000);
       const p2 = makePlayer(Wind.Sha, 25000);
@@ -157,32 +253,26 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
       const { drawn: dealerHand, remaining: afterDealer } = drawFromWall(wallData.wall, 14);
       let wallRemaining = afterDealer;
-
-      const players0: PlayerData = { ...p0, hand: sortHand([...dealerHand]) };
-      let players = [players0, p1, p2, p3];
+      p0.hand = sortHand([...dealerHand]);
 
       for (let i = 1; i < 4; i++) {
         const { drawn, remaining } = drawFromWall(wallRemaining, 13);
-        players[i] = { ...players[i]!, hand: [...drawn] };
+        [p0, p1, p2, p3][i]!.hand = [...drawn];
         wallRemaining = remaining;
       }
 
       return {
         players: [
-          { ...players[0]!, hand: sortHand([...players[0]!.hand]) },
-          { ...players[1]!, hand: sortHand([...players[1]!.hand]) },
-          { ...players[2]!, hand: sortHand([...players[2]!.hand]) },
-          { ...players[3]!, hand: sortHand([...players[3]!.hand]) },
+          { ...p0, hand: sortHand([...p0.hand]) },
+          { ...p1, hand: sortHand([...p1.hand]) },
+          { ...p2, hand: sortHand([...p2.hand]) },
+          { ...p3, hand: sortHand([...p3.hand]) },
         ] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData],
         wall: wallRemaining,
         deadWall: { tiles: wallData.deadWall, doraCount: 1 },
-        roundWind: 0,
-        honba: 0,
-        riichiSticks: 0,
-        currentPlayer: 0,
-        lastDiscard: null,
-        winner: null,
-        phase: 'playing',
+        roundWind: 0, honba: 0, riichiSticks: 0,
+        currentPlayer: 0, lastDiscard: null, winner: null,
+        phase: 'playing', claimOptions: [],
         message: 'ゲーム開始！ 東1局 あなたが親です',
       };
     }
@@ -191,11 +281,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.wall.length === 0) {
         return { ...state, phase: 'ended', message: '流局: 牌山がなくなりました' };
       }
-
       const { drawn, remaining } = drawFromWall(state.wall, 1);
       const player = state.players[action.player];
       const newHand = sortHand([...player.hand, ...drawn]);
-
       const updatedPlayer = updPlayer(player, { hand: newHand });
       const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
 
@@ -203,83 +291,139 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (isWinningHand(tilesToCounts(newHand))) {
         message = `ツモ! ${formatTile(drawn[0]!)} をツモりました。和了できます！`;
       }
-
-      return {
-        ...state,
-        players: newPlayers,
-        wall: remaining,
-        message,
-      };
+      return { ...state, players: newPlayers, wall: remaining, message };
     }
 
     case 'DISCARD': {
       const player = state.players[action.player];
       const tileStr = formatTile(action.tile);
       const fixedHand = removeOneTile(player.hand, action.tile);
-
       const updatedPlayer = updPlayer(player, {
-        hand: sortHand(fixedHand),
-        discards: [...player.discards, action.tile],
+        hand: sortHand(fixedHand), discards: [...player.discards, action.tile],
       });
       const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
 
-      // Check ron for players in riichi
+      // Check ron (players in riichi)
       for (let i = 0; i < 4; i++) {
         if (i === action.player) continue;
-        const target = newPlayers[i];
-        if (target.riichi) {
-          const testHand = [...target.hand, action.tile];
+        if (newPlayers[i].riichi) {
+          const testHand = [...newPlayers[i].hand, action.tile];
           if (isWinningHand(tilesToCounts(testHand))) {
             return {
-              ...state,
-              players: newPlayers,
+              ...state, players: newPlayers,
               lastDiscard: { tile: action.tile, player: action.player },
-              winner: i,
-              phase: 'ended',
+              winner: i, phase: 'ended', claimOptions: [],
               message: `${i === 0 ? 'あなた' : `プレイヤー${i + 1}`}がロン! ${tileStr}`,
             };
           }
         }
       }
 
-      const nextPlayer = (action.player + 1) % 4;
+      // Check claims
+      const claims = collectClaims(action.tile, action.player, newPlayers);
+      const sorted = sortClaimsByPriority(claims, action.player);
+
+      if (sorted.length > 0) {
+        return {
+          ...state, players: newPlayers,
+          lastDiscard: { tile: action.tile, player: action.player },
+          claimOptions: sorted, phase: 'claiming',
+          message: `${tileStr} を切りました。`,
+        };
+      }
+
+      return {
+        ...state, players: newPlayers,
+        lastDiscard: { tile: action.tile, player: action.player },
+        currentPlayer: (action.player + 1) % 4, claimOptions: [],
+        message: player.riichi ? `${tileStr} を切りました (リーチ中)` : `${tileStr} を切りました`,
+      };
+    }
+
+    case 'CHI': {
+      const option = state.claimOptions[action.optionIndex];
+      if (!option || option.type !== 'chi') return { ...state, message: 'チーできません' };
+
+      const player = state.players[option.player];
+      const fromHand = option.tiles.filter(t => !isSameTile(t, option.calledTile));
+      let newHand = [...player.hand];
+      for (const t of fromHand) { newHand = removeOneTile(newHand, t); }
+
       return {
         ...state,
-        players: newPlayers,
-        lastDiscard: { tile: action.tile, player: action.player },
-        currentPlayer: nextPlayer,
-        message: player.riichi
-          ? `${tileStr} を切りました (リーチ中)`
-          : `${tileStr} を切りました`,
+        players: updatePlayerInTuple(state.players, option.player, updPlayer(player, {
+          hand: sortHand(newHand), melds: [...player.melds, option.meld],
+        })),
+        currentPlayer: option.player, phase: 'playing', claimOptions: [],
+        message: 'チー！',
+      };
+    }
+
+    case 'PON': {
+      const option = state.claimOptions.find(c => c.type === 'pon');
+      if (!option) return { ...state, message: 'ポンできません' };
+
+      const player = state.players[option.player];
+      const fromHand = option.tiles.filter(t => !isSameTile(t, option.calledTile));
+      let newHand = [...player.hand];
+      for (const t of fromHand) { newHand = removeOneTile(newHand, t); }
+
+      return {
+        ...state,
+        players: updatePlayerInTuple(state.players, option.player, updPlayer(player, {
+          hand: sortHand(newHand), melds: [...player.melds, option.meld],
+        })),
+        currentPlayer: option.player, phase: 'playing', claimOptions: [],
+        message: `ポン！ ${formatTile(option.calledTile)}`,
+      };
+    }
+
+    case 'DAIMINKAN': {
+      const option = state.claimOptions.find(c => c.type === 'daiminkan');
+      if (!option) return { ...state, message: 'カンできません' };
+
+      const player = state.players[option.player];
+      const fromHand = option.tiles.filter(t => !isSameTile(t, option.calledTile));
+      let newHand = [...player.hand];
+      for (const t of fromHand) { newHand = removeOneTile(newHand, t); }
+
+      return {
+        ...state,
+        players: updatePlayerInTuple(state.players, option.player, updPlayer(player, {
+          hand: sortHand(newHand), melds: [...player.melds, option.meld],
+        })),
+        currentPlayer: option.player, phase: 'playing', claimOptions: [],
+        message: `カン！ ${formatTile(option.calledTile)}`,
+      };
+    }
+
+    case 'PASS_CLAIM': {
+      const discarder = state.lastDiscard?.player;
+      if (discarder === undefined) return state;
+      return {
+        ...state, phase: 'playing', claimOptions: [],
+        currentPlayer: (discarder + 1) % 4,
+        message: '鳴きません',
       };
     }
 
     case 'DECLARE_RIICHI': {
       const player = state.players[action.player];
-
       if (player.points < 1000) {
         return { ...state, message: 'リーチできません (持ち点が1000点未満)' };
       }
-
       const testHand = removeOneTile(player.hand, action.discardTile);
       const tenpai = findTenpaiTiles(testHand);
       if (tenpai.length === 0) {
         return { ...state, message: 'リーチできません (テンパイしていません)' };
       }
-
       const tenpaiStr = tenpai.map(i => formatTile(indexToTile(i))).join(', ');
-
-      const updatedPlayer = updPlayer(player, {
-        hand: sortHand(testHand),
-        discards: [...player.discards, action.discardTile],
-        riichi: true,
-        points: player.points - 1000,
-      });
-      const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
-
       return {
         ...state,
-        players: newPlayers,
+        players: updatePlayerInTuple(state.players, action.player, updPlayer(player, {
+          hand: sortHand(testHand), discards: [...player.discards, action.discardTile],
+          riichi: true, points: player.points - 1000,
+        })),
         riichiSticks: state.riichiSticks + 1,
         lastDiscard: { tile: action.discardTile, player: action.player },
         currentPlayer: (action.player + 1) % 4,
@@ -288,31 +432,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case 'RON': {
-      if (!state.lastDiscard) {
-        return { ...state, message: 'ロンできません (捨て牌がありません)' };
-      }
-      const winner = state.players[action.winner];
-      const testHand = [...winner.hand, state.lastDiscard.tile];
-      if (!isWinningHand(tilesToCounts(testHand))) {
+      if (!state.lastDiscard) return { ...state, message: 'ロンできません' };
+      if (!isWinningHand(tilesToCounts([...state.players[action.winner].hand, state.lastDiscard.tile]))) {
         return { ...state, message: 'ロンできません (和了形ではありません)' };
       }
       return {
-        ...state,
-        winner: action.winner,
-        phase: 'ended',
+        ...state, winner: action.winner, phase: 'ended', claimOptions: [],
         message: `${action.winner === 0 ? 'あなた' : `プレイヤー${action.winner + 1}`}がロン!`,
       };
     }
 
     case 'TSUMO': {
-      const player = state.players[action.player];
-      if (!isWinningHand(tilesToCounts(player.hand))) {
-        return { ...state, message: 'ツモ和了できません (和了形ではありません)' };
+      if (!isWinningHand(tilesToCounts(state.players[action.player].hand))) {
+        return { ...state, message: 'ツモ和了できません' };
       }
       return {
-        ...state,
-        winner: action.player,
-        phase: 'ended',
+        ...state, winner: action.player, phase: 'ended', claimOptions: [],
         message: `${action.player === 0 ? 'あなた' : `プレイヤー${action.player + 1}`}がツモ和了!`,
       };
     }
@@ -329,16 +464,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
 function updatePlayerInTuple(
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
-  index: number,
-  updated: PlayerData,
+  index: number, updated: PlayerData,
 ): [PlayerData, PlayerData, PlayerData, PlayerData] {
-  const result: [PlayerData, PlayerData, PlayerData, PlayerData] = [
+  return [
     index === 0 ? updated : players[0],
     index === 1 ? updated : players[1],
     index === 2 ? updated : players[2],
     index === 3 ? updated : players[3],
   ];
-  return result;
 }
 
 // ── Initial state ──────────────────────────────────────────────────
@@ -346,20 +479,14 @@ function updatePlayerInTuple(
 export function createInitialState(): GameState {
   return {
     players: [
-      makePlayer(Wind.Ton, 25000),
-      makePlayer(Wind.Nan, 25000),
-      makePlayer(Wind.Sha, 25000),
-      makePlayer(Wind.Pei, 25000),
+      makePlayer(Wind.Ton, 25000), makePlayer(Wind.Nan, 25000),
+      makePlayer(Wind.Sha, 25000), makePlayer(Wind.Pei, 25000),
     ] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData],
     wall: [],
     deadWall: { tiles: [], doraCount: 1 },
-    roundWind: 0,
-    honba: 0,
-    riichiSticks: 0,
-    currentPlayer: 0,
-    lastDiscard: null,
-    winner: null,
-    phase: 'playing',
+    roundWind: 0, honba: 0, riichiSticks: 0,
+    currentPlayer: 0, lastDiscard: null, winner: null,
+    phase: 'playing', claimOptions: [],
     message: '',
   };
 }
