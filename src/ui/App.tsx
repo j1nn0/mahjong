@@ -93,6 +93,15 @@ const MeldView: React.FC<MeldViewProps> = ({ melds }) => {
   );
 };
 
+const claimLabel = (option: ClaimOption): string => {
+  switch (option.type) {
+    case 'ron': return 'ロン';
+    case 'chi': return 'チー';
+    case 'pon': return 'ポン';
+    case 'daiminkan': return 'カン';
+  }
+};
+
 // ── Opponent info ──────────────────────────────────────────────────
 interface OpponentInfoProps {
   wind: string;
@@ -121,21 +130,24 @@ interface ClaimMenuProps {
 }
 
 const ClaimMenu: React.FC<ClaimMenuProps> = ({ options, selectedIndex }) => {
-  const grouped = new Map<string, ClaimOption[]>();
-  for (const opt of options) {
-    const key = opt.type === 'ron' ? 'ロン' : opt.type === 'chi' ? 'チー' : opt.type === 'pon' ? 'ポン' : 'カン';
-    if (!grouped.has(key)) grouped.set(key, []);
-    grouped.get(key)!.push(opt);
-  }
-
   return (
     <Box flexDirection="column" marginTop={1}>
       <Text bold>鳴き:</Text>
-      {options.map((opt, i) => (
-        <Text key={i} inverse={i === selectedIndex} wrap="truncate">
-          {opt.display}
-        </Text>
-      ))}
+      {options.map((opt, i) => {
+        const selected = i === selectedIndex;
+        return (
+          <Box key={i}>
+            <Box width={5}>
+              <Text inverse={selected}>{claimLabel(opt)}</Text>
+            </Box>
+            {opt.tiles.map((tile, j) => (
+              <Box key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${j}`} width={3}>
+                <Text color={tileColor(tile)}>{formatTile(tile)}</Text>
+              </Box>
+            ))}
+          </Box>
+        );
+      })}
       <Text dimColor>L:ロン C:チー P:ポン K:カン Space:パス ←→:選択</Text>
     </Box>
   );
