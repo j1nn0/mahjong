@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { gameReducer, createInitialState, collectClaims, sortClaimsByPriority, processAiTurn } from './GameState.js';
+import { gameReducer, createInitialState, collectClaims, sortClaimsByPriority, processAiTurn, normalizeGameState } from './GameState.js';
 import type { GameState, PlayerData } from './GameState.js';
 import { MeldType, Suit, type Tile } from '../game/types.js';
 
@@ -15,7 +15,16 @@ function s(v: number): Tile {
 function ton(): Tile { return { suit: Suit.Wind, value: 0 }; }
 
 function makeTestPlayer(hand: Tile[]): PlayerData {
-  return { hand, melds: [], discards: [], riichi: false, points: 25000, wind: 0 as never };
+  return {
+    hand,
+    melds: [],
+    discards: [],
+    riichi: false,
+    temporaryFuriten: false,
+    riichiFuriten: false,
+    points: 25000,
+    wind: 0 as never,
+  };
 }
 
 function makePlayers(p0: PlayerData, p1: PlayerData, p2: PlayerData, p3: PlayerData) {
@@ -44,6 +53,58 @@ function pointsTotal(state: GameState): number {
 }
 
 describe('collectClaims', () => {
+  it('detects ron when a player can win on the discard', () => {
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+
+    const claims = collectClaims(p(5), 1, players);
+
+    expect(claims.some(c => c.type === 'ron' && c.player === 0)).toBe(true);
+  });
+
+  it('does not detect ron when the player is furiten from their own discard', () => {
+    const players = makePlayers(
+      { ...makeTestPlayer(winningTanyao13()), discards: [p(5)] },
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+
+    const claims = collectClaims(p(5), 1, players);
+
+    expect(claims.some(c => c.type === 'ron' && c.player === 0)).toBe(false);
+  });
+
+  it('does not detect ron while the player is temporarily furiten', () => {
+    const players = makePlayers(
+      { ...makeTestPlayer(winningTanyao13()), temporaryFuriten: true },
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+
+    const claims = collectClaims(p(5), 1, players);
+
+    expect(claims.some(c => c.type === 'ron' && c.player === 0)).toBe(false);
+  });
+
+  it('does not detect ron after the player missed ron in riichi', () => {
+    const players = makePlayers(
+      { ...makeTestPlayer(winningTanyao13()), riichi: true, riichiFuriten: true },
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+
+    const claims = collectClaims(p(5), 1, players);
+
+    expect(claims.some(c => c.type === 'ron' && c.player === 0)).toBe(false);
+  });
+
   it('detects pon when a player has 2 matching tiles', () => {
     // Player 1 discards m4, Player 2 has m4,m4
     const players = makePlayers(
@@ -108,10 +169,22 @@ describe('collectClaims', () => {
 });
 
 describe('sortClaimsByPriority', () => {
+  it('puts ron before pon and chi', () => {
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([p(5), p(5)]),
+      makeTestPlayer([]),
+    );
+    const sorted = sortClaimsByPriority(collectClaims(p(5), 1, players), 1);
+    expect(sorted[0]?.type).toBe('ron');
+    expect(sorted[0]?.player).toBe(0);
+  });
+
   it('puts pon before chi', () => {
     const players = makePlayers(
       makeTestPlayer([m(5)]),
-      makeTestPlayer([m(4), m(6), p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), ton(), ton()]),
+      makeTestPlayer([m(4), m(6), p(1), p(2), p(4), p(5), p(7), p(8), s(1), s(4), ton(), ton()]),
       makeTestPlayer([m(5), m(5)]),
       makeTestPlayer([]),
     );
@@ -125,6 +198,141 @@ describe('sortClaimsByPriority', () => {
 });
 
 describe('gameReducer claims', () => {
+  it('enters claiming phase when the human can ron without riichi', () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer(winningTanyao13()),
+        makeTestPlayer([p(5)]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterDiscard = gameReducer(state, { type: 'DISCARD', player: 1, tile: p(5) });
+
+    expect(afterDiscard.phase).toBe('claiming');
+    expect(afterDiscard.claimOptions[0]?.type).toBe('ron');
+    expect(afterDiscard.claimOptions[0]?.player).toBe(0);
+  });
+
+  it('processes a human ron claim from claiming phase', () => {
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: 'claiming',
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: collectClaims(p(5), 1, players),
+    });
+
+    const beforeTotal = pointsTotal(state);
+    const afterRon = gameReducer(state, { type: 'RON', winner: 0 });
+
+    expect(afterRon.phase).toBe('roundEnded');
+    expect(afterRon.winner).toBe(0);
+    expect(pointsTotal(afterRon)).toBe(beforeTotal);
+  });
+
+  it('AI chooses ron before other claims', () => {
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5), p(5)]),
+    );
+    const state = startedState({
+      phase: 'claiming',
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: sortClaimsByPriority(collectClaims(p(5), 1, players), 1),
+    });
+
+    const { action } = processAiTurn(state);
+    expect(action).toEqual({ type: 'RON', winner: 2 });
+  });
+
+  it('marks a passed ron option as temporary furiten', () => {
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: 'claiming',
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: collectClaims(p(5), 1, players),
+    });
+
+    const afterPass = gameReducer(state, { type: 'PASS_CLAIM' });
+
+    expect(afterPass.players[0].temporaryFuriten).toBe(true);
+    expect(afterPass.players[0].riichiFuriten).toBe(false);
+    expect(afterPass.phase).toBe('playing');
+  });
+
+  it('marks a passed ron option in riichi as riichi furiten', () => {
+    const players = makePlayers(
+      { ...makeTestPlayer(winningTanyao13()), riichi: true },
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: 'claiming',
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: collectClaims(p(5), 1, players),
+    });
+
+    const afterPass = gameReducer(state, { type: 'PASS_CLAIM' });
+
+    expect(afterPass.players[0].riichiFuriten).toBe(true);
+    expect(afterPass.players[0].temporaryFuriten).toBe(false);
+  });
+
+  it('clears temporary furiten on the player draw', () => {
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer(winningTanyao13()), temporaryFuriten: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterDraw = gameReducer(state, { type: 'DRAW', player: 0 });
+
+    expect(afterDraw.players[0].temporaryFuriten).toBe(false);
+  });
+
+  it('does not clear riichi furiten on the player draw', () => {
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer(winningTanyao13()), riichi: true, riichiFuriten: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterDraw = gameReducer(state, { type: 'DRAW', player: 0 });
+
+    expect(afterDraw.players[0].riichiFuriten).toBe(true);
+  });
+
   it('enters claiming phase after discard when pon is available', () => {
     const start = gameReducer(createInitialState(), { type: 'START_GAME' });
     // We need to set up: P0 discards, P1 (or anyone else) can pon
@@ -369,5 +577,57 @@ describe('claiming turn ownership', () => {
     expect(afterKan.currentPlayer).toBe(0);
     expect(afterKan.players[0].melds).toHaveLength(1);
     expect(afterKan.players[2].melds).toHaveLength(0);
+  });
+});
+
+describe('normalizeGameState', () => {
+  it('fills fields added after older saves', () => {
+    const restored = normalizeGameState({
+      players: [
+        { hand: [m(1)], points: 24000 },
+        { hand: [m(2)], points: 26000 },
+        { hand: [m(3)], points: 25000 },
+        { hand: [m(4)], points: 25000 },
+      ],
+      phase: 'playing',
+      honba: 2,
+      riichiSticks: 1,
+      currentPlayer: 1,
+      wall: [p(1), p(2)],
+      deadWall: { tiles: [s(1)], doraCount: 1 },
+    });
+
+    expect(restored.roundNumber).toBe(1);
+    expect(restored.dealer).toBe(0);
+    expect(restored.finalRanking).toBeNull();
+    expect(restored.players[0].melds).toEqual([]);
+    expect(restored.players[0].discards).toEqual([]);
+    expect(restored.players[0].riichi).toBe(false);
+    expect(restored.players[0].temporaryFuriten).toBe(false);
+    expect(restored.players[0].riichiFuriten).toBe(false);
+    expect(restored.players[1].points).toBe(26000);
+    expect(restored.currentPlayer).toBe(1);
+    expect(restored.wall).toEqual([p(1), p(2)]);
+  });
+
+  it('RESTORE action normalizes incoming state', () => {
+    const restored = gameReducer(createInitialState(), {
+      type: 'RESTORE',
+      state: {
+        players: [
+          { hand: [m(1)], points: 24000 },
+          { hand: [m(2)], points: 26000 },
+          { hand: [m(3)], points: 25000 },
+          { hand: [m(4)], points: 25000 },
+        ],
+        phase: 'playing',
+      } as unknown as GameState,
+    });
+
+    expect(restored.roundNumber).toBe(1);
+    expect(restored.players[0].melds).toEqual([]);
+    expect(restored.players[0].discards).toEqual([]);
+    expect(restored.players[0].temporaryFuriten).toBe(false);
+    expect(restored.players[0].riichiFuriten).toBe(false);
   });
 });

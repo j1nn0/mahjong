@@ -1,6 +1,6 @@
 import { type Tile, type Meld, MeldType, Wind, Suit } from '../game/types.js';
 import { buildWall, drawFromWall, sortHand, formatTile, getDoraIndicators, getUraDoraIndicators } from '../game/tiles.js';
-import { tilesToCounts, isWinningHand, findTenpaiTiles, indexToTile } from '../game/agari.js';
+import { tilesToCounts, isWinningHand, findTenpaiTiles, indexToTile, tileToIndex } from '../game/agari.js';
 import { fullScore, type ScoreResult } from '../game/scoring.js';
 import { aiChooseDiscard } from '../game/ai.js';
 
@@ -11,6 +11,8 @@ export interface PlayerData {
   melds: readonly Meld[];
   discards: readonly Tile[];
   riichi: boolean;
+  temporaryFuriten: boolean;
+  riichiFuriten: boolean;
   points: number;
   wind: Wind;
 }
@@ -20,13 +22,27 @@ export interface DeadWallState {
   doraCount: number;
 }
 
-export interface ClaimOption {
+export type ClaimOption = RonClaimOption | MeldClaimOption;
+
+export interface RonClaimOption {
+  type: 'ron';
+  player: number;
+  tiles: readonly Tile[];
+  calledTile: Tile;
+  display: string;
+}
+
+export interface MeldClaimOption {
   type: 'chi' | 'pon' | 'daiminkan';
   player: number;
   tiles: readonly Tile[];
   calledTile: Tile;
   meld: Meld;
   display: string;
+}
+
+function isMeldClaimOption(option: ClaimOption, type: MeldClaimOption['type'], player: number): option is MeldClaimOption {
+  return option.type === type && option.player === player;
 }
 
 export interface GameState {
@@ -77,7 +93,7 @@ function isSameTile(a: Tile, b: Tile): boolean {
 function makePlayer(wind: number, points: number): PlayerData {
   return {
     hand: [], melds: [], discards: [],
-    riichi: false, points, wind: wind as Wind,
+    riichi: false, temporaryFuriten: false, riichiFuriten: false, points, wind: wind as Wind,
   };
 }
 
@@ -97,6 +113,13 @@ function turnTileCount(player: PlayerData): number {
 
 function allPlayerTiles(player: PlayerData): readonly Tile[] {
   return [...player.hand, ...player.melds.flatMap(meld => meld.tiles)];
+}
+
+function isFuritenFromOwnDiscards(player: PlayerData): boolean {
+  if (player.temporaryFuriten || player.riichiFuriten) return true;
+  const waits = new Set(findTenpaiTiles(allPlayerTiles(player)));
+  if (waits.size === 0) return false;
+  return player.discards.some(tile => waits.has(tileToIndex(tile)));
 }
 
 /** 現在のstateからドラパラメータを抽出 */
@@ -134,6 +157,8 @@ function dealRound(
     melds: [],
     discards: [],
     riichi: false,
+    temporaryFuriten: false,
+    riichiFuriten: false,
     points: player.points,
     wind: playerWind(i, dealer),
   })) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
@@ -335,6 +360,16 @@ export function collectClaims(
   for (let i = 0; i < 4; i++) {
     if (i === discarder) continue;
     const hand = players[i].hand;
+    if (!isFuritenFromOwnDiscards(players[i]) && isWinningHand(tilesToCounts([...allPlayerTiles(players[i]), discarded]))) {
+      options.push({
+        type: 'ron',
+        player: i,
+        tiles: [discarded],
+        calledTile: discarded,
+        display: `ロン ${formatTile(discarded)}`,
+      });
+    }
+
     if (players[i].riichi) continue;
 
     if (canPonTile(discarded, hand)) {
@@ -368,6 +403,10 @@ export function sortClaimsByPriority(
   options: readonly ClaimOption[], discarder: number,
 ): readonly ClaimOption[] {
   return [...options].sort((a, b) => {
+    // Ron > pon/kan > chi
+    if (a.type === 'ron' && b.type !== 'ron') return -1;
+    if (a.type !== 'ron' && b.type === 'ron') return 1;
+
     // Pon/kan > chi (even across different players)
     const aStrong = a.type === 'pon' || a.type === 'daiminkan';
     const bStrong = b.type === 'pon' || b.type === 'daiminkan';
@@ -391,6 +430,7 @@ export function processAiTurn(state: GameState): { state: GameState; action: Gam
     const aiClaims = state.claimOptions.filter(c => c.player !== 0);
     if (aiClaims.length > 0) {
       const claim = aiClaims[0]!;
+      if (claim.type === 'ron') return { state, action: { type: 'RON', winner: claim.player } };
       if (claim.type === 'chi') return { state, action: { type: 'CHI', player: claim.player, optionIndex: 0 } };
       if (claim.type === 'pon') return { state, action: { type: 'PON', player: claim.player } };
       if (claim.type === 'daiminkan') return { state, action: { type: 'DAIMINKAN', player: claim.player } };
@@ -433,7 +473,7 @@ export function processAiTurn(state: GameState): { state: GameState; action: Gam
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case 'RESTORE':
-      return (action as { type: 'RESTORE'; state: GameState }).state;
+      return normalizeGameState((action as { type: 'RESTORE'; state: GameState }).state);
     case 'START_GAME': {
       return dealRound(createInitialState(), 0, 1, 0, 0, 'ゲーム開始！ 東1局 あなたが親です');
     }
@@ -458,7 +498,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const { drawn, remaining } = drawFromWall(state.wall, 1);
       const player = state.players[action.player];
       const newHand = sortHand([...player.hand, ...drawn]);
-      const updatedPlayer = updPlayer(player, { hand: newHand });
+      const updatedPlayer = updPlayer(player, { hand: newHand, temporaryFuriten: false });
       const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
 
       let message = `ツモ: ${formatTile(drawn[0]!)}`;
@@ -476,56 +516,6 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         hand: sortHand(fixedHand), discards: [...player.discards, action.tile],
       });
       const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
-
-      // Check ron (players in riichi)
-      for (let i = 0; i < 4; i++) {
-        if (i === action.player) continue;
-        if (newPlayers[i].riichi) {
-          const testHand = [...newPlayers[i].hand, action.tile];
-          if (isWinningHand(tilesToCounts(testHand))) {
-          const winner = i;
-          const loser = action.player;
-          const score = fullScore({
-            closedTiles: newPlayers[winner].hand,
-            melds: newPlayers[winner].melds,
-            winTile: action.tile,
-            isTsumo: false,
-            roundWind: state.roundWind,
-            playerSeat: winner,
-            dealer: state.dealer,
-            isRiichi: true,
-            riichiSticks: state.riichiSticks,
-            honba: state.honba,
-            ...doraParams(state),
-            isDoubleRiichi: false,
-            isIppatsu: false,
-            isHaitei: false,
-            isHoutei: false,
-            isRinshan: false,
-            isChankan: false,
-          });
-          if (!score) {
-            return {
-              ...state, players: newPlayers,
-              lastDiscard: { tile: action.tile, player: action.player },
-              winner, phase: 'ended', claimOptions: [],
-              message: `${winner === 0 ? 'あなた' : `プレイヤー${winner + 1}`}がロン!`,
-            };
-          }
-          const finalPlayers = applyRonPayment(newPlayers, winner, loser, score, state.riichiSticks);
-          const yakuStr = score.yaku.map(y => y.name).join('・');
-          return finishRound(
-            { ...state, lastDiscard: { tile: action.tile, player: action.player } },
-            finalPlayers,
-            winner,
-            false,
-            winner === state.dealer,
-            score,
-            `${winner === 0 ? 'あなた' : `プレイヤー${winner + 1}`}がロン! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
-          );
-          }
-        }
-      }
 
       // Check claims
       const claims = collectClaims(action.tile, action.player, newPlayers);
@@ -580,7 +570,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     }
 
     case 'PON': {
-      const option = state.claimOptions.find(c => c.type === 'pon' && c.player === action.player);
+      const option = state.claimOptions.find(c => isMeldClaimOption(c, 'pon', action.player));
       if (!option) return { ...state, message: 'ポンできません' };
 
       const player = state.players[option.player];
@@ -609,7 +599,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       };
     }
     case 'DAIMINKAN': {
-      const option = state.claimOptions.find(c => c.type === 'daiminkan' && c.player === action.player);
+      const option = state.claimOptions.find(c => isMeldClaimOption(c, 'daiminkan', action.player));
       if (!option) return { ...state, message: 'カンできません' };
       const player = state.players[option.player];
       const fromHand = option.tiles.slice(0, 3); // [hand1, hand2, hand3] 末尾がcalledTile
@@ -640,8 +630,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case 'PASS_CLAIM': {
       const discarder = state.lastDiscard?.player;
       if (discarder === undefined) return state;
+      const missedRonPlayers = new Set(state.claimOptions.filter(c => c.type === 'ron').map(c => c.player));
+      const players = state.players.map((player, i) => (
+        missedRonPlayers.has(i)
+          ? updPlayer(player, player.riichi ? { riichiFuriten: true } : { temporaryFuriten: true })
+          : player
+      )) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
       return {
-        ...state, phase: 'playing', claimOptions: [],
+        ...state, players, phase: 'playing', claimOptions: [],
         currentPlayer: (discarder + 1) % 4,
         message: '鳴きません',
       };
@@ -673,7 +669,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case 'RON': {
       if (!state.lastDiscard) return { ...state, message: 'ロンできません' };
-      if (!isWinningHand(tilesToCounts([...state.players[action.winner].hand, state.lastDiscard.tile]))) {
+      if (!isWinningHand(tilesToCounts([...allPlayerTiles(state.players[action.winner]), state.lastDiscard.tile]))) {
         return { ...state, message: 'ロンできません (和了形ではありません)' };
       }
       const winner = action.winner;
@@ -798,5 +794,62 @@ export function createInitialState(): GameState {
     finalRanking: null,
     phase: 'playing', claimOptions: [],
     message: '',
+  };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
+function normalizePlayer(value: unknown, fallback: PlayerData): PlayerData {
+  if (!isRecord(value)) return fallback;
+  return {
+    hand: Array.isArray(value.hand) ? value.hand as Tile[] : fallback.hand,
+    melds: Array.isArray(value.melds) ? value.melds as Meld[] : fallback.melds,
+    discards: Array.isArray(value.discards) ? value.discards as Tile[] : fallback.discards,
+    riichi: typeof value.riichi === 'boolean' ? value.riichi : fallback.riichi,
+    temporaryFuriten: typeof value.temporaryFuriten === 'boolean' ? value.temporaryFuriten : fallback.temporaryFuriten,
+    riichiFuriten: typeof value.riichiFuriten === 'boolean' ? value.riichiFuriten : fallback.riichiFuriten,
+    points: typeof value.points === 'number' ? value.points : fallback.points,
+    wind: typeof value.wind === 'number' ? value.wind as Wind : fallback.wind,
+  };
+}
+
+export function normalizeGameState(value: unknown): GameState {
+  const base = createInitialState();
+  if (!isRecord(value)) return base;
+
+  const rawPlayers = value.players;
+  const players = Array.isArray(rawPlayers) && rawPlayers.length === 4
+    ? ([0, 1, 2, 3].map(i => normalizePlayer(rawPlayers[i], base.players[i])) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData])
+    : base.players;
+
+  const rawDeadWall = isRecord(value.deadWall) ? value.deadWall : null;
+
+  return {
+    ...base,
+    ...value,
+    players,
+    wall: Array.isArray(value.wall) ? value.wall as Tile[] : base.wall,
+    deadWall: {
+      tiles: rawDeadWall && Array.isArray(rawDeadWall.tiles) ? rawDeadWall.tiles as Tile[] : base.deadWall.tiles,
+      doraCount: rawDeadWall && typeof rawDeadWall.doraCount === 'number' ? rawDeadWall.doraCount : base.deadWall.doraCount,
+    },
+    roundWind: typeof value.roundWind === 'number' ? value.roundWind : base.roundWind,
+    roundNumber: typeof value.roundNumber === 'number' ? value.roundNumber : base.roundNumber,
+    dealer: typeof value.dealer === 'number' ? value.dealer : base.dealer,
+    honba: typeof value.honba === 'number' ? value.honba : base.honba,
+    riichiSticks: typeof value.riichiSticks === 'number' ? value.riichiSticks : base.riichiSticks,
+    currentPlayer: typeof value.currentPlayer === 'number' ? value.currentPlayer : base.currentPlayer,
+    lastDiscard: isRecord(value.lastDiscard) ? value.lastDiscard as GameState['lastDiscard'] : null,
+    winner: typeof value.winner === 'number' ? value.winner : null,
+    phase: value.phase === 'playing' || value.phase === 'claiming' || value.phase === 'roundEnded' || value.phase === 'ended'
+      ? value.phase
+      : base.phase,
+    claimOptions: Array.isArray(value.claimOptions) ? value.claimOptions as ClaimOption[] : base.claimOptions,
+    lastDrawnTile: isRecord(value.lastDrawnTile) ? value.lastDrawnTile as Tile : null,
+    lastScoreResult: isRecord(value.lastScoreResult) ? value.lastScoreResult as unknown as ScoreResult : null,
+    finalRanking: Array.isArray(value.finalRanking) ? value.finalRanking as number[] : null,
+    message: typeof value.message === 'string' ? value.message : base.message,
   };
 }

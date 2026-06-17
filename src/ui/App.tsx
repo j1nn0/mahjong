@@ -1,6 +1,6 @@
 import React, { useReducer, useEffect, useState, useRef } from 'react';
 import { Text, Box, useInput } from 'ink';
-import { createInitialState, gameReducer, processAiTurn } from '../state/GameState.js';
+import { createInitialState, gameReducer, normalizeGameState, processAiTurn } from '../state/GameState.js';
 import { saveGame, loadGame, clearSave } from '../state/persistence.js';
 import type { ClaimOption, GameAction, GameState } from '../state/GameState.js';
 import { formatTile, tileToUnicode } from '../game/tiles.js';
@@ -123,7 +123,7 @@ interface ClaimMenuProps {
 const ClaimMenu: React.FC<ClaimMenuProps> = ({ options, selectedIndex }) => {
   const grouped = new Map<string, ClaimOption[]>();
   for (const opt of options) {
-    const key = opt.type === 'chi' ? 'チー' : opt.type === 'pon' ? 'ポン' : 'カン';
+    const key = opt.type === 'ron' ? 'ロン' : opt.type === 'chi' ? 'チー' : opt.type === 'pon' ? 'ポン' : 'カン';
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(opt);
   }
@@ -136,7 +136,7 @@ const ClaimMenu: React.FC<ClaimMenuProps> = ({ options, selectedIndex }) => {
           {opt.display}
         </Text>
       ))}
-      <Text dimColor>C:チー P:ポン K:カン Space:パス ←→:選択</Text>
+      <Text dimColor>L:ロン C:チー P:ポン K:カン Space:パス ←→:選択</Text>
     </Box>
   );
 };
@@ -180,13 +180,7 @@ const App: React.FC = () => {
   useEffect(() => {
     const saved = loadGame<GameState>();
     if (saved && saved.phase !== 'ended') {
-      setSavedState({
-        ...createInitialState(),
-        ...saved,
-        roundNumber: saved.roundNumber ?? 1,
-        dealer: saved.dealer ?? 0,
-        finalRanking: saved.finalRanking ?? null,
-      });
+      setSavedState(normalizeGameState(saved));
       setStartupMode('choose');
     } else {
       dispatch({ type: 'START_GAME' });
@@ -314,6 +308,12 @@ const App: React.FC = () => {
         return;
       }
 
+      if (input === 'l') {
+        if (humanOptions.some(o => o.type === 'ron')) {
+          dispatch({ type: 'RON', winner: 0 });
+          return;
+        }
+      }
       if (input === 'c') {
         const chiOpts = humanOptions.filter(o => o.type === 'chi');
         if (chiOpts.length > 0) {
