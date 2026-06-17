@@ -262,11 +262,34 @@ const App: React.FC = () => {
     }
   });
 
-  // Game ended screen
   if (state.phase === 'ended') {
+    const sr = state.lastScoreResult;
     return (
       <Box flexDirection="column" padding={1}>
         <Text bold>{state.message}</Text>
+        {sr && (
+          <>
+            <Text dimColor>{'─'.repeat(40)}</Text>
+            <Box flexDirection="column">
+              <Text bold>-- スコア --</Text>
+              <Text>符: {sr.fu} 飜数: {sr.han}</Text>
+              {sr.yakuman > 0 && <Text color="red" bold>役満 ×{sr.yakuman}</Text>}
+              {sr.limit !== 'none' && <Text>満貫区分: {sr.limit}</Text>}
+              <Text bold>役: {sr.yaku.map(y => y.name).join('・')}</Text>
+              <Text>支払い: {sr.payment.from.map(f => `P${f.player + 1}: ${f.amount}点`).join(', ')}</Text>
+              <Text bold color="yellow">獲得: {sr.score}点</Text>
+            </Box>
+            <Text dimColor>{'─'.repeat(40)}</Text>
+          </>
+        )}
+        <Box marginTop={1}>
+          {[0, 1, 2, 3].map(i => (
+            <Box key={i} marginRight={2}>
+              <Text>{['東家(あなた)', '南家', '西家', '北家'][i]}: </Text>
+              <Text bold={true} color={i === state.winner ? 'yellow' : 'white'}>{state.players[i].points}点</Text>
+            </Box>
+          ))}
+        </Box>
         <Text dimColor>スペースキーまたはQで新しいゲーム</Text>
       </Box>
     );

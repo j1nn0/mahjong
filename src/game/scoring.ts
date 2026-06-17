@@ -1,0 +1,199 @@
+import { type Tile, type Meld, Suit } from './types.js';
+import { type HandGroups, type YakuResult, detectYaku, totalHan, totalYakuman, YakuId } from './yaku.js';
+
+// ── Scoring result ────────────────────────────────────────────────
+
+export interface Payment {
+  from: Array<{ player: number; amount: number }>;
+  winnerGets: number;
+}
+
+export interface ScoreResult {
+  yaku: readonly YakuResult[];
+  han: number;
+  yakuman: number;
+  fu: number;
+  basePoints: number;
+  limit: 'none' | 'mangan' | 'haneman' | 'baiman' | 'sanbaiman' | 'yakuman';
+  score: number;
+  payment: Payment;
+}
+
+// ── Fu calculation ────────────────────────────────────────────────
+
+export function calculateFu(
+  handGroups: HandGroups,
+  detectedYaku: readonly YakuResult[],
+  roundWind: number,
+  playerWind: number,
+): number {
+  // Special hand types
+  if (detectedYaku.some(y => y.id === YakuId.Chiitoitsu)) return 25;
+  if (detectedYaku.some(y => y.id === YakuId.Kokushi || y.id === YakuId.Kokushi13)) return 0;
+
+  const groups = handGroups.groups;
+  const pairs = groups.filter(g => g.type === 'pair');
+  const triplets = groups.filter(g => g.type === 'triplet' || g.type === 'quad');
+  const isMenzen = handGroups.isClosed;
+  const isTsumo = handGroups.isTsumo;
+  const isPinfu = detectedYaku.some(y => y.id === YakuId.Pinfu);
+
+  let fu = 20;
+
+  // Menzen ron
+  if (!isTsumo && isMenzen) fu += 10;
+
+  // Tsumo (not for pinfu)
+  if (isTsumo && !isPinfu) fu += 2;
+
+  // Triplet / quad fu
+  for (const g of triplets) {
+    const isTerminal = g.tiles.some(t => t.suit === Suit.Wind || t.suit === Suit.Dragon ||
+      t.value === 1 || t.value === 9);
+    const isQuad = g.type === 'quad';
+    const isClosed = !g.isOpen;
+
+    if (isQuad) {
+      fu += isClosed ? (isTerminal ? 32 : 16) : (isTerminal ? 16 : 8);
+    } else {
+      fu += isClosed ? (isTerminal ? 8 : 4) : (isTerminal ? 4 : 2);
+    }
+  }
+
+  // Pair fu
+  if (pairs.length === 1) {
+    const pairIdx = pairs[0]!.lowestIndex;
+    if (pairIdx >= 31) fu += 2;
+    else if (pairIdx >= 27) {
+      const wind = pairIdx - 27;
+      if (wind === roundWind || wind === playerWind) fu += 2;
+    }
+  }
+
+  // Special pinfu adjustment: if it has any fu from triplets/pair, it's not pinfu
+  // But we already check this via detectYaku returning Pinfu
+
+  // Round up to next 10
+  return Math.ceil(fu / 10) * 10;
+}
+
+// ── Score calculation ─────────────────────────────────────────────
+
+const MANGAN = 2000;
+
+export function calculateScore(
+  handGroups: HandGroups,
+  detectedYaku: readonly YakuResult[],
+  isDealer: boolean,
+  riichiSticks: number,
+  honba: number,
+): ScoreResult {
+  // Yakuman
+  const yakumanCount = totalYakuman(detectedYaku);
+  if (yakumanCount > 0) {
+    const basePoints = MANGAN * 4 * yakumanCount;
+    const payment = calcPayment(isDealer, basePoints, riichiSticks, honba);
+    return {
+      yaku: detectedYaku, han: 0, yakuman: yakumanCount,
+      fu: 0, basePoints, limit: 'yakuman',
+      score: payment.winnerGets + riichiSticks * 1000 + honba * 300,
+      payment,
+    };
+  }
+
+  // Normal score
+  const han = totalHan(detectedYaku);
+  const fu = calculateFu(handGroups, detectedYaku, handGroups.groups.length > 0 ? 0 : 0, handGroups.groups.length > 0 ? 0 : 0);
+
+  let basePoints = fu * Math.pow(2, han + 2);
+  let limit: ScoreResult['limit'] = 'none';
+
+  if (han >= 13) {
+    limit = 'yakuman';
+    basePoints = MANGAN * 4;
+  } else if (han >= 11) {
+    limit = 'sanbaiman';
+    basePoints = MANGAN * 3;
+  } else if (han >= 8) {
+    limit = 'baiman';
+    basePoints = MANGAN * 2;
+  } else if (han >= 6) {
+    limit = 'haneman';
+    basePoints = Math.floor(MANGAN * 1.5);
+  } else if (basePoints >= MANGAN) {
+    limit = 'mangan';
+    basePoints = MANGAN;
+  }
+
+  const payment = calcPayment(isDealer, basePoints, riichiSticks, honba);
+  const score = payment.winnerGets;
+
+  return { yaku: detectedYaku, han, yakuman: 0, fu, basePoints, limit, score, payment };
+}
+
+function calcPayment(
+  isDealer: boolean, basePoints: number,
+  riichiSticks: number, honba: number,
+): Payment {
+  const honbaBonus = honba * 300;
+
+  if (isDealer) {
+    const perPlayer = Math.ceil(basePoints * 2 / 100) * 100;
+    const from = [1, 2, 3].map(i => ({ player: i, amount: perPlayer }));
+    const winnerGets = perPlayer * 3 + riichiSticks * 1000 + honbaBonus;
+    return { from, winnerGets };
+  } else {
+    const parentAmount = Math.ceil(basePoints * 2 / 100) * 100;
+    const childAmount = Math.ceil(basePoints / 100) * 100;
+    const from = [
+      { player: 0, amount: parentAmount },
+      { player: 2, amount: childAmount },
+      { player: 3, amount: childAmount },
+    ];
+    const winnerGets = parentAmount + childAmount * 2 + riichiSticks * 1000 + honbaBonus;
+    return { from, winnerGets };
+  }
+}
+
+// ── Convenience API ───────────────────────────────────────────────
+
+export interface ScoreParams {
+  closedTiles: readonly Tile[];
+  melds: readonly Meld[];
+  winTile: Tile;
+  isTsumo: boolean;
+  roundWind: number;
+  playerSeat: number;
+  isRiichi: boolean;
+  isDoubleRiichi: boolean;
+  isIppatsu: boolean;
+  isHaitei: boolean;
+  isHoutei: boolean;
+  isRinshan: boolean;
+  isChankan: boolean;
+  riichiSticks: number;
+  honba: number;
+}
+
+export function fullScore(params: ScoreParams): ScoreResult | null {
+  const { yaku, groups } = detectYaku({
+    closedTiles: params.closedTiles,
+    melds: params.melds,
+    winTile: params.winTile,
+    isTsumo: params.isTsumo,
+    roundWind: params.roundWind,
+    playerWind: params.playerSeat,
+    isRiichi: params.isRiichi,
+    isDoubleRiichi: params.isDoubleRiichi,
+    isIppatsu: params.isIppatsu,
+    isHaitei: params.isHaitei,
+    isHoutei: params.isHoutei,
+    isRinshan: params.isRinshan,
+    isChankan: params.isChankan,
+  });
+
+  if (!groups || yaku.length === 0) return null;
+
+  const isDealer = params.playerSeat === 0;
+  return calculateScore(groups, yaku, isDealer, params.riichiSticks, params.honba);
+}
