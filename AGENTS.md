@@ -53,3 +53,9 @@ Pull requests should include a short behavior summary, test results, linked
 issues when relevant, and terminal screenshots or recordings for visible TUI
 changes. Call out changes to mahjong rules, save-file behavior, or AI decisions
 so reviewers can focus on the affected scenarios.
+
+## Agent Workspace
+
+Agents that need temporary files during their work must use the `.temp`
+directory at the project root, not `/tmp`. Create the directory if it does not
+exist, and clean up any temporary files when the task completes.

@@ -1,54 +1,54 @@
-import { Suit, Wind, Dragon, type Tile } from './types.js';
+import { Suit, Wind, Dragon, type Tile } from "./types.js";
 
 // ── Unicode mapping ──────────────────────────────────────────────
 
 /** Unicode code point base for mahjong tiles */
-const BASE = 0x1F000;
+const BASE = 0x1f000;
 
 const TILE_UNICODE_MAP: Record<string, string> = {
   // Winds (base + 0..3)
-  'w:0': String.fromCodePoint(BASE + 0), // 🀀 Ton
-  'w:1': String.fromCodePoint(BASE + 1), // 🀁 Nan
-  'w:2': String.fromCodePoint(BASE + 2), // 🀂 Sha
-  'w:3': String.fromCodePoint(BASE + 3), // 🀃 Pei
+  "w:0": String.fromCodePoint(BASE + 0), // 🀀 Ton
+  "w:1": String.fromCodePoint(BASE + 1), // 🀁 Nan
+  "w:2": String.fromCodePoint(BASE + 2), // 🀂 Sha
+  "w:3": String.fromCodePoint(BASE + 3), // 🀃 Pei
 
   // Dragons (base + 4..6)
-  'd:0': String.fromCodePoint(BASE + 4), // 🀄 Chun
-  'd:1': String.fromCodePoint(BASE + 5), // 🀅 Hatsu
-  'd:2': String.fromCodePoint(BASE + 6), // 🀆 Haku
+  "d:0": String.fromCodePoint(BASE + 4), // 🀄 Chun
+  "d:1": String.fromCodePoint(BASE + 5), // 🀅 Hatsu
+  "d:2": String.fromCodePoint(BASE + 6), // 🀆 Haku
 
   // Man (base + 7..15)
-  'm:1': String.fromCodePoint(BASE + 7),  // 🀇
-  'm:2': String.fromCodePoint(BASE + 8),  // 🀈
-  'm:3': String.fromCodePoint(BASE + 9),  // 🀉
-  'm:4': String.fromCodePoint(BASE + 10), // 🀊
-  'm:5': String.fromCodePoint(BASE + 11), // 🀋
-  'm:6': String.fromCodePoint(BASE + 12), // 🀌
-  'm:7': String.fromCodePoint(BASE + 13), // 🀍
-  'm:8': String.fromCodePoint(BASE + 14), // 🀎
-  'm:9': String.fromCodePoint(BASE + 15), // 🀏
+  "m:1": String.fromCodePoint(BASE + 7), // 🀇
+  "m:2": String.fromCodePoint(BASE + 8), // 🀈
+  "m:3": String.fromCodePoint(BASE + 9), // 🀉
+  "m:4": String.fromCodePoint(BASE + 10), // 🀊
+  "m:5": String.fromCodePoint(BASE + 11), // 🀋
+  "m:6": String.fromCodePoint(BASE + 12), // 🀌
+  "m:7": String.fromCodePoint(BASE + 13), // 🀍
+  "m:8": String.fromCodePoint(BASE + 14), // 🀎
+  "m:9": String.fromCodePoint(BASE + 15), // 🀏
 
   // Sou (base + 16..24)
-  's:1': String.fromCodePoint(BASE + 16), // 🀐
-  's:2': String.fromCodePoint(BASE + 17), // 🀑
-  's:3': String.fromCodePoint(BASE + 18), // 🀒
-  's:4': String.fromCodePoint(BASE + 19), // 🀓
-  's:5': String.fromCodePoint(BASE + 20), // 🀔
-  's:6': String.fromCodePoint(BASE + 21), // 🀕
-  's:7': String.fromCodePoint(BASE + 22), // 🀖
-  's:8': String.fromCodePoint(BASE + 23), // 🀗
-  's:9': String.fromCodePoint(BASE + 24), // 🀘
+  "s:1": String.fromCodePoint(BASE + 16), // 🀐
+  "s:2": String.fromCodePoint(BASE + 17), // 🀑
+  "s:3": String.fromCodePoint(BASE + 18), // 🀒
+  "s:4": String.fromCodePoint(BASE + 19), // 🀓
+  "s:5": String.fromCodePoint(BASE + 20), // 🀔
+  "s:6": String.fromCodePoint(BASE + 21), // 🀕
+  "s:7": String.fromCodePoint(BASE + 22), // 🀖
+  "s:8": String.fromCodePoint(BASE + 23), // 🀗
+  "s:9": String.fromCodePoint(BASE + 24), // 🀘
 
   // Pin (base + 25..33)
-  'p:1': String.fromCodePoint(BASE + 25), // 🀙
-  'p:2': String.fromCodePoint(BASE + 26), // 🀚
-  'p:3': String.fromCodePoint(BASE + 27), // 🀛
-  'p:4': String.fromCodePoint(BASE + 28), // 🀜
-  'p:5': String.fromCodePoint(BASE + 29), // 🀝
-  'p:6': String.fromCodePoint(BASE + 30), // 🀞
-  'p:7': String.fromCodePoint(BASE + 31), // 🀟
-  'p:8': String.fromCodePoint(BASE + 32), // 🀠
-  'p:9': String.fromCodePoint(BASE + 33), // 🀡
+  "p:1": String.fromCodePoint(BASE + 25), // 🀙
+  "p:2": String.fromCodePoint(BASE + 26), // 🀚
+  "p:3": String.fromCodePoint(BASE + 27), // 🀛
+  "p:4": String.fromCodePoint(BASE + 28), // 🀜
+  "p:5": String.fromCodePoint(BASE + 29), // 🀝
+  "p:6": String.fromCodePoint(BASE + 30), // 🀞
+  "p:7": String.fromCodePoint(BASE + 31), // 🀟
+  "p:8": String.fromCodePoint(BASE + 32), // 🀠
+  "p:9": String.fromCodePoint(BASE + 33), // 🀡
 };
 
 function tileKey(tile: Tile): string {
@@ -59,7 +59,7 @@ function tileKey(tile: Tile): string {
 
 /** 牌に対応するUnicode文字を返す */
 export function tileToUnicode(tile: Tile): string {
-  return TILE_UNICODE_MAP[tileKey(tile)] ?? '?';
+  return TILE_UNICODE_MAP[tileKey(tile)] ?? "?";
 }
 
 /** 牌の表示用文字列（Unicode + 赤指定） */
@@ -120,9 +120,9 @@ export function createAllTiles(): readonly Tile[] {
 // ── Shuffle (Fisher-Yates) ───────────────────────────────────────
 
 /** Fisher-Yates シャッフル（副作用で配列を破壊） */
-function shuffleInPlace<T>(array: T[]): void {
+function shuffleInPlace<T>(array: T[], random: () => number): void {
   for (let i = array.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+    const j = Math.floor(random() * (i + 1));
     const tmp = array[i]!;
     array[i] = array[j]!;
     array[j] = tmp;
@@ -144,9 +144,9 @@ export interface WallData {
 const DEAD_WALL_SIZE = 14;
 
 /** 136牌をシャッフルして牌山と王牌に分割 */
-export function buildWall(): WallData {
+export function buildWall(random: () => number = Math.random): WallData {
   const tiles = [...createAllTiles()];
-  shuffleInPlace(tiles);
+  shuffleInPlace(tiles, random);
 
   const deadWall = tiles.slice(0, DEAD_WALL_SIZE);
   const wall = tiles.slice(DEAD_WALL_SIZE);
@@ -155,14 +155,20 @@ export function buildWall(): WallData {
 }
 
 /** 山の先頭から指定枚数をツモする。新しい山を返す。 */
-export function drawFromWall(wall: readonly Tile[], count: number): { drawn: readonly Tile[]; remaining: readonly Tile[] } {
+export function drawFromWall(
+  wall: readonly Tile[],
+  count: number,
+): { drawn: readonly Tile[]; remaining: readonly Tile[] } {
   const drawn = wall.slice(0, count);
   const remaining = wall.slice(count);
   return { drawn, remaining };
 }
 
 /** 王牌から新しいドラ表示牌をめくる。新しいdeadWallとdoraCountを返す。 */
-export function revealDora(deadWall: readonly Tile[], doraCount: number): { deadWall: readonly Tile[]; doraCount: number } {
+export function revealDora(
+  deadWall: readonly Tile[],
+  doraCount: number,
+): { deadWall: readonly Tile[]; doraCount: number } {
   const nextIndex = doraCount;
   if (nextIndex >= deadWall.length) {
     return { deadWall, doraCount };
@@ -171,7 +177,9 @@ export function revealDora(deadWall: readonly Tile[], doraCount: number): { dead
 }
 
 /** 王牌から嶺上牌をツモする。 */
-export function drawDeadWall(deadWall: readonly Tile[]): { drawn: Tile; remaining: readonly Tile[] } | undefined {
+export function drawDeadWall(
+  deadWall: readonly Tile[],
+): { drawn: Tile; remaining: readonly Tile[] } | undefined {
   // 嶺上牌は王牌の後ろから (王牌の先頭がドラ表示牌ゾーン、末尾が嶺上牌)
   const lastIndex = deadWall.length - 1;
   if (lastIndex < 0) return undefined;
@@ -189,11 +197,16 @@ export function sortHand(tiles: readonly Tile[]): readonly Tile[] {
 
 function tileSortKey(tile: Tile): number {
   switch (tile.suit) {
-    case Suit.Man:   return 0 + tile.value;
-    case Suit.Pin:   return 100 + tile.value;
-    case Suit.Sou:   return 200 + tile.value;
-    case Suit.Wind:  return 300 + tile.value;
-    case Suit.Dragon: return 400 + tile.value;
+    case Suit.Man:
+      return 0 + tile.value;
+    case Suit.Pin:
+      return 100 + tile.value;
+    case Suit.Sou:
+      return 200 + tile.value;
+    case Suit.Wind:
+      return 300 + tile.value;
+    case Suit.Dragon:
+      return 400 + tile.value;
   }
 }
 
@@ -216,7 +229,11 @@ export function nextDoraTile(indicator: Tile): Tile {
   }
   const v = indicator.value as number;
   const nextValue = v >= 9 ? 1 : v + 1;
-  return { suit: indicator.suit, value: nextValue as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red: false };
+  return {
+    suit: indicator.suit,
+    value: nextValue as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9,
+    red: false,
+  };
 }
 
 /**
@@ -236,19 +253,23 @@ export function countDora(
   // 表ドラ
   for (const indicator of doraIndicators) {
     const doraTile = nextDoraTile(indicator);
-    doraCount += handTiles.filter(t => t.suit === doraTile.suit && t.value === doraTile.value).length;
+    doraCount += handTiles.filter(
+      (t) => t.suit === doraTile.suit && t.value === doraTile.value,
+    ).length;
   }
 
   // 裏ドラ (リーチ和了のみ)
   if (isRiichi && uraDoraIndicators) {
     for (const indicator of uraDoraIndicators) {
       const doraTile = nextDoraTile(indicator);
-      doraCount += handTiles.filter(t => t.suit === doraTile.suit && t.value === doraTile.value).length;
+      doraCount += handTiles.filter(
+        (t) => t.suit === doraTile.suit && t.value === doraTile.value,
+      ).length;
     }
   }
 
   // 赤ドラ
-  doraCount += handTiles.filter(t => t.red).length;
+  doraCount += handTiles.filter((t) => t.red).length;
 
   return doraCount;
 }
@@ -265,6 +286,9 @@ export function getDoraIndicators(deadWall: readonly Tile[], doraCount: number):
  * 王牌から裏ドラ表示牌の一覧を取得（リーチ和了時のみ有効）。
  * 裏ドラはドラ表示牌の5つ後ろから。
  */
-export function getUraDoraIndicators(deadWall: readonly Tile[], doraCount: number): readonly Tile[] {
+export function getUraDoraIndicators(
+  deadWall: readonly Tile[],
+  doraCount: number,
+): readonly Tile[] {
   return deadWall.slice(5, 5 + doraCount);
 }
