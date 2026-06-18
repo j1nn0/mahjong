@@ -87,6 +87,42 @@ describe("rule accuracy regression checks", () => {
     expect(r.yaku.some((y) => y.id === "pinfu")).toBe(false);
   });
 
+  it("pinfu should require a two-sided wait (closed wait)", () => {
+    // 123m 456m 789m 24p + 66s, winTile=3p (closed wait) => NOT pinfu
+    const closed = [
+      n("m", 1),
+      n("m", 2),
+      n("m", 3),
+      n("m", 4),
+      n("m", 5),
+      n("m", 6),
+      n("m", 7),
+      n("m", 8),
+      n("m", 9),
+      n("p", 2),
+      n("p", 4),
+      n("s", 6),
+      n("s", 6),
+    ];
+    const r = detectYaku({
+      closedTiles: closed,
+      melds: [],
+      winTile: n("p", 3),
+      isTsumo: false,
+      roundWind: Wind.Ton,
+      playerWind: Wind.Nan,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+    });
+    expect(r.yaku.some((y) => y.id === "pinfu")).toBe(false);
+  });
+
+
   it("pinfu should be allowed on a two-sided wait", () => {
     // 123m 456m 789m 23p + 22s, winTile=4p (two-sided wait) => pinfu
     const closed = [

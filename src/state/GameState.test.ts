@@ -9,6 +9,7 @@ import {
 } from "./GameState.js";
 import type { GameState, PlayerData } from "./GameState.js";
 import { MeldType, Suit, type Tile, type Meld } from "../game/types.js";
+import { YakuId } from "../game/yaku.js";
 
 function m(v: number): Tile {
   return { suit: Suit.Man, value: v as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 };
@@ -29,6 +30,8 @@ function makeTestPlayer(hand: Tile[]): PlayerData {
     melds: [],
     discards: [],
     riichi: false,
+    doubleRiichi: false,
+    ippatsu: false,
     temporaryFuriten: false,
     riichiFuriten: false,
     points: 25000,
@@ -42,6 +45,14 @@ function makePlayers(p0: PlayerData, p1: PlayerData, p2: PlayerData, p3: PlayerD
 
 function winningTanyao13(): Tile[] {
   return [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), p(4), p(5)];
+}
+
+function twoSidedTanyao13(): Tile[] {
+  return [m(3), m(4), p(2), p(3), p(4), s(3), s(4), s(5), p(5), p(6), p(7), m(6), m(6)];
+}
+
+function twoSidedTanyao13WaitingP4(): Tile[] {
+  return [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), m(6), m(6)];
 }
 
 function startedState(overrides: Partial<GameState> = {}): GameState {
@@ -931,6 +942,145 @@ describe("rinshan draw after kan", () => {
     expect(afterDraw.pendingRinshan).toBe(false);
     expect(afterDraw.deadWall.tiles).toHaveLength(2); // consumed 1 tile
     expect(afterDraw.lastDrawnTile).toEqual(s(5)); // last dead wall tile
+  });
+});
+
+describe("riichi and win flags", () => {
+  it("rejects riichi on an open hand even when the fixed meld hand is tenpai", () => {
+    const meld: Meld = { type: MeldType.Poon, tiles: [p(5), p(5), p(5)], calledTile: p(5) };
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer([m(1), m(2), m(3), m(4), m(5), m(6), p(7), p(7)]), melds: [meld] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterRiichi = gameReducer(state, { type: "DECLARE_RIICHI", player: 0, discardTile: p(7) });
+
+    expect(afterRiichi.players[0].riichi).toBe(false);
+    expect(afterRiichi.riichiSticks).toBe(state.riichiSticks);
+  });
+
+  it("passes double riichi and ippatsu to ron scoring", () => {
+    const players = makePlayers(
+      { ...makeTestPlayer(winningTanyao13()), riichi: true, doubleRiichi: true, ippatsu: true },
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      riichiSticks: 1,
+    });
+
+    const afterRon = gameReducer(state, { type: "RON", winner: 0 });
+
+    expect(afterRon.lastScoreResult?.yaku.some((y) => y.id === YakuId.DoubleRiichi)).toBe(true);
+    expect(afterRon.lastScoreResult?.yaku.some((y) => y.id === YakuId.Ippatsu)).toBe(true);
+  });
+
+  it("passes houtei to ron scoring on the last discard", () => {
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      players,
+      wall: [],
+      lastDiscard: { tile: p(5), player: 1 },
+    });
+
+    const afterRon = gameReducer(state, { type: "RON", winner: 0 });
+
+    expect(afterRon.lastScoreResult?.yaku.some((y) => y.id === YakuId.Houtei)).toBe(true);
+  });
+
+  it("passes haitei to tsumo scoring after drawing the last wall tile", () => {
+    const winTile = p(4);
+    const hand = [...twoSidedTanyao13WaitingP4(), winTile];
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(makeTestPlayer(hand), makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
+      wall: [],
+      lastDrawnTile: winTile,
+      lastDrawWasRinshan: false,
+    });
+
+    const afterTsumo = gameReducer(state, { type: "TSUMO", player: 0 });
+
+    expect(afterTsumo.lastScoreResult?.yaku.some((y) => y.id === YakuId.Haitei)).toBe(true);
+  });
+
+  it("passes rinshan to tsumo scoring after a dead-wall draw", () => {
+    const winTile = p(4);
+    const hand = [...twoSidedTanyao13WaitingP4(), winTile];
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(makeTestPlayer(hand), makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
+      wall: [s(1)],
+      lastDrawnTile: winTile,
+      lastDrawWasRinshan: true,
+    });
+
+    const afterTsumo = gameReducer(state, { type: "TSUMO", player: 0 });
+
+    expect(afterTsumo.lastScoreResult?.yaku.some((y) => y.id === YakuId.Rinshan)).toBe(true);
+    expect(afterTsumo.lastScoreResult?.yaku.some((y) => y.id === YakuId.Haitei)).toBe(false);
+  });
+
+  it("allows ron on an added kan and scores chankan", () => {
+    const ponMeld: Meld = { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) };
+    const players = makePlayers(
+      { ...makeTestPlayer([m(2), p(1), p(1), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]), melds: [ponMeld] },
+      makeTestPlayer(twoSidedTanyao13()),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      currentPlayer: 0,
+      players,
+      deadWall: { tiles: [p(1), p(2), m(9)], doraCount: 1 },
+    });
+
+    const afterKakan = gameReducer(state, { type: "KAKAN", player: 0, tile: m(2) });
+    expect(afterKakan.phase).toBe("claiming");
+    expect(afterKakan.claimOptions.some((claim) => claim.type === "ron" && claim.player === 1)).toBe(true);
+
+    const afterRon = gameReducer(afterKakan, { type: "RON", winner: 1 });
+
+    expect(afterRon.phase).toBe("roundEnded");
+    expect(afterRon.lastScoreResult?.yaku.some((y) => y.id === YakuId.Chankan)).toBe(true);
+  });
+
+  it("continues to rinshan draw when added-kan ron is passed", () => {
+    const ponMeld: Meld = { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) };
+    const players = makePlayers(
+      { ...makeTestPlayer([m(2), p(1), p(1), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]), melds: [ponMeld] },
+      makeTestPlayer(twoSidedTanyao13()),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      currentPlayer: 0,
+      players,
+      deadWall: { tiles: [p(1), p(2), m(9)], doraCount: 1 },
+      wall: [s(1), s(2), s(3)],
+    });
+
+    const afterKakan = gameReducer(state, { type: "KAKAN", player: 0, tile: m(2) });
+    const afterPass = gameReducer(afterKakan, { type: "PASS_CLAIM" });
+    const afterDraw = gameReducer(afterPass, { type: "DRAW", player: 0 });
+
+    expect(afterPass.currentPlayer).toBe(0);
+    expect(afterPass.pendingRinshan).toBe(true);
+    expect(afterDraw.lastDrawnTile).toEqual(m(9));
+    expect(afterDraw.pendingRinshan).toBe(false);
   });
 });
 

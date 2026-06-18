@@ -127,8 +127,8 @@ describe('detectYaku', () => {
   });
 
   it('detects pinfu (4 sequences + non-value pair)', () => {
-    // 123m 456m 789p 123s 44s
-    const closed13 = [m(1), m(2), m(3), m(4), m(5), m(6), p(7), p(8), p(9), s(1), s(2), s(3), s(4)];
+    // 123m 456m 789p 23s 44p, win on 4s (two-sided wait)
+    const closed13 = [m(1), m(2), m(3), m(4), m(5), m(6), p(7), p(8), p(9), s(2), s(3), p(4), p(4)];
     const result = detectYaku(detectParams({ closed: closed13, winTile: s(4) }));
     expect(result.groups).not.toBeNull();
     expect(result.yaku.some((y) => y.id === YakuId.Pinfu)).toBe(true);
@@ -160,9 +160,9 @@ describe('detectYaku', () => {
 
 describe('totalHan / totalYakuman', () => {
   it('sums han correctly for tanyao riichi tsumo (+ pinfu)', () => {
-    // 234m 567p 345s 234p 55p → tanyao(1) + riichi(1) + mentsumo(1) + pinfu(1) = 4
-    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), p(4), p(5)];
-    const result = detectYaku(detectParams({ closed: closed13, winTile: p(5), riichi: true }));
+    // 234m 567p 345s 23p 66m, win on 4p → tanyao(1) + riichi(1) + mentsumo(1) + pinfu(1) = 4
+    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), m(6), m(6)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: p(4), riichi: true }));
     const han = totalHan(result.yaku);
     expect(han).toBe(4);
   });
@@ -195,11 +195,11 @@ describe('totalHan / totalYakuman', () => {
 
 describe('fullScore', () => {
   it('scores a tanyao riichi tsumo hand correctly (4 han)', () => {
-    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), p(4), p(5)];
+    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), m(6), m(6)];
     const score = fullScore({
       closedTiles: closed13,
       melds: [],
-      winTile: p(5),
+      winTile: p(4),
       isTsumo: true,
       roundWind: 0,
       playerSeat: 0,

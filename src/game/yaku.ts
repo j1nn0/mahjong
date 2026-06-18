@@ -140,6 +140,21 @@ function isTerminalOrHonor(tile: Tile): boolean {
   return isTerminal(tile.value as number);
 }
 
+function isTwoSidedWait(sequences: readonly Group[], winTile: Tile): boolean {
+  if (winTile.suit === Suit.Wind || winTile.suit === Suit.Dragon) return false;
+
+  const winIdx = tileToIndex(winTile);
+  return sequences.some((sequence) => {
+    if (!sequence.tiles.some((tile) => tileToIndex(tile) === winIdx)) return false;
+
+    const start = sequence.lowestIndex % 9;
+    const winOffset = winIdx - sequence.lowestIndex;
+    if (winOffset === 0) return start <= 5;
+    if (winOffset === 2) return start >= 1;
+    return false;
+  });
+}
+
 // ── Kokushi (13 orphans) helpers ──────────────────────────────────
 
 const KOKUSHI_INDICES = [0, 8, 9, 17, 18, 26, 27, 28, 29, 30, 31, 32, 33];
@@ -342,13 +357,13 @@ export function detectYaku(
 
 
 
-  // Pinfu: 4 sequences + non-value pair
+  // Pinfu: 4 sequences + non-value pair + two-sided wait
   if (allMelds.length === 4 && sequences.length === 4 && pairs.length === 1) {
     const pairIdx = pairs[0]!.lowestIndex;
     const isValuePair =
       (pairIdx >= 31) ||
       (pairIdx >= 27 && (pairIdx - 27 === roundWind || pairIdx - 27 === playerWind));
-    if (!isValuePair) {
+    if (!isValuePair && isTwoSidedWait(sequences, winTile)) {
       resultingYaku.push(metaResult(YakuId.Pinfu));
     }
   }

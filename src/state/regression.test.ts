@@ -15,6 +15,8 @@ function makePlayer(hand: Tile[], melds: Meld[] = [], points = 25000): PlayerDat
     melds,
     discards: [],
     riichi: false,
+    doubleRiichi: false,
+    ippatsu: false,
     temporaryFuriten: false,
     riichiFuriten: false,
     points,
@@ -49,11 +51,10 @@ function makeState(overrides: Partial<GameState> = {}): GameState {
 
 describe("GameState rule accuracy regressions", () => {
   it("exhaustive draw should not mark a melded hand tenpai via flexible tile reuse", () => {
-    // Player 0: 1m2m3m 4m5m6m 7p + 副露5pポン・6pポン。
-    // 実際の待ちは 7p のみ。しかし handleExhaustiveDraw は allTiles に対して findTenpaiTiles を使うため、
-    // 4p待ちと誤判定する。
+    // Player 0: 1111m 2m 3p 4p + 副露5pポン・6pポン。
+    // 副露を固定すると不聴だが、allTiles を柔軟に分解すると 3m 待ちと誤判定される。
     const p0 = makePlayer(
-      [m(1), m(2), m(3), m(4), m(5), m(6), p(7)],
+      [m(1), m(1), m(1), m(1), m(2), p(3), p(4)],
       [
         { type: MeldType.Poon, tiles: [p(5), p(5), p(5)], calledTile: p(5) },
         { type: MeldType.Poon, tiles: [p(6), p(6), p(6)], calledTile: p(6) },
@@ -62,11 +63,7 @@ describe("GameState rule accuracy regressions", () => {
     // 他プレイヤーは全員不聴
     const notenHand = [
       m(1),
-      m(1),
       m(2),
-      m(2),
-      m(3),
-      m(3),
       m(4),
       m(4),
       m(5),
@@ -74,6 +71,10 @@ describe("GameState rule accuracy regressions", () => {
       m(6),
       m(6),
       m(7),
+      m(8),
+      m(8),
+      m(9),
+      m(9),
     ];
     const players = [p0, makePlayer(notenHand), makePlayer(notenHand), makePlayer(notenHand)] as [
       PlayerData,
@@ -86,7 +87,6 @@ describe("GameState rule accuracy regressions", () => {
     const next = gameReducer(state, { type: "DRAW", player: 0 });
 
     expect(next.phase).toBe("roundEnded");
-    // 現在の実装では P0 が誤って聴牌と判定される
-    expect(next.message).toContain("聴牌: あなた");
+    expect(next.message).toContain("全員不聴");
   });
 });
