@@ -1,5 +1,12 @@
 import { type Tile, type Meld, Suit } from './types.js';
-import { type HandGroups, type YakuResult, detectYaku, totalHan, totalYakuman, YakuId } from './yaku.js';
+import {
+  type HandGroups,
+  type YakuResult,
+  detectYaku,
+  totalHan,
+  totalYakuman,
+  YakuId,
+} from './yaku.js';
 import { countDora } from './tiles.js';
 
 // ── Scoring result ────────────────────────────────────────────────
@@ -30,15 +37,15 @@ export function calculateFu(
   playerWind: number,
 ): number {
   // Special hand types
-  if (detectedYaku.some(y => y.id === YakuId.Chiitoitsu)) return 25;
-  if (detectedYaku.some(y => y.id === YakuId.Kokushi || y.id === YakuId.Kokushi13)) return 0;
+  if (detectedYaku.some((y) => y.id === YakuId.Chiitoitsu)) return 25;
+  if (detectedYaku.some((y) => y.id === YakuId.Kokushi || y.id === YakuId.Kokushi13)) return 0;
 
   const groups = handGroups.groups;
-  const pairs = groups.filter(g => g.type === 'pair');
-  const triplets = groups.filter(g => g.type === 'triplet' || g.type === 'quad');
+  const pairs = groups.filter((g) => g.type === 'pair');
+  const triplets = groups.filter((g) => g.type === 'triplet' || g.type === 'quad');
   const isMenzen = handGroups.isClosed;
   const isTsumo = handGroups.isTsumo;
-  const isPinfu = detectedYaku.some(y => y.id === YakuId.Pinfu);
+  const isPinfu = detectedYaku.some((y) => y.id === YakuId.Pinfu);
 
   let fu = 20;
 
@@ -50,15 +57,16 @@ export function calculateFu(
 
   // Triplet / quad fu
   for (const g of triplets) {
-    const isTerminal = g.tiles.some(t => t.suit === Suit.Wind || t.suit === Suit.Dragon ||
-      t.value === 1 || t.value === 9);
+    const isTerminal = g.tiles.some(
+      (t) => t.suit === Suit.Wind || t.suit === Suit.Dragon || t.value === 1 || t.value === 9,
+    );
     const isQuad = g.type === 'quad';
     const isClosed = !g.isOpen;
 
     if (isQuad) {
-      fu += isClosed ? (isTerminal ? 32 : 16) : (isTerminal ? 16 : 8);
+      fu += isClosed ? (isTerminal ? 32 : 16) : isTerminal ? 16 : 8;
     } else {
-      fu += isClosed ? (isTerminal ? 8 : 4) : (isTerminal ? 4 : 2);
+      fu += isClosed ? (isTerminal ? 8 : 4) : isTerminal ? 4 : 2;
     }
   }
 
@@ -68,7 +76,8 @@ export function calculateFu(
     if (pairIdx >= 31) fu += 2;
     else if (pairIdx >= 27) {
       const wind = pairIdx - 27;
-      if (wind === roundWind || wind === playerWind) fu += 2;
+      if (wind === roundWind) fu += 2;
+      if (wind === playerWind) fu += 2;
     }
   }
 
@@ -99,10 +108,22 @@ export function calculateScore(
   const yakumanCount = totalYakuman(detectedYaku);
   if (yakumanCount > 0) {
     const basePoints = MANGAN * 4 * yakumanCount;
-    const payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba);
+    const payment = calcPayment(
+      winner,
+      dealer,
+      handGroups.isTsumo,
+      basePoints,
+      riichiSticks,
+      honba,
+    );
     return {
-      yaku: detectedYaku, han: 0, yakuman: yakumanCount,
-      fu: 0, basePoints, doraHan: 0, limit: 'yakuman',
+      yaku: detectedYaku,
+      han: 0,
+      yakuman: yakumanCount,
+      fu: 0,
+      basePoints,
+      doraHan: 0,
+      limit: 'yakuman',
       score: payment.winnerGets,
       payment,
     };
@@ -115,7 +136,7 @@ export function calculateScore(
   // Dora count (not included in hand yaku - purely additive)
   const doraIndicatorsList = doraIndicators ?? [];
   const uraDoraIndicatorsList = uraDoraIndicators ?? [];
-  const allHandTiles = [...handGroups.groups.flatMap(g => g.tiles)];
+  const allHandTiles = [...handGroups.groups.flatMap((g) => g.tiles)];
   const doraCounted = countDora(allHandTiles, doraIndicatorsList, true, uraDoraIndicatorsList);
   const han = yakuHan + doraCounted;
 
@@ -142,32 +163,48 @@ export function calculateScore(
   const payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba);
   const score = payment.winnerGets;
 
-  return { yaku: detectedYaku, han, yakuman: 0, fu, basePoints, doraHan: doraCounted, limit, score, payment };
+  return {
+    yaku: detectedYaku,
+    han,
+    yakuman: 0,
+    fu,
+    basePoints,
+    doraHan: doraCounted,
+    limit,
+    score,
+    payment,
+  };
 }
 
 function calcPayment(
-  winner: number, dealer: number, isTsumo: boolean, basePoints: number,
-  riichiSticks: number, honba: number,
+  winner: number,
+  dealer: number,
+  isTsumo: boolean,
+  basePoints: number,
+  riichiSticks: number,
+  honba: number,
 ): Payment {
   const riichiBonus = riichiSticks * 1000;
 
   if (!isTsumo) {
     const multiplier = winner === dealer ? 6 : 4;
-    const amount = Math.ceil(basePoints * multiplier / 100) * 100 + honba * 300;
+    const amount = Math.ceil((basePoints * multiplier) / 100) * 100 + honba * 300;
     return { from: [], winnerGets: amount + riichiBonus };
   }
 
   if (winner === dealer) {
-    const perPlayer = Math.ceil(basePoints * 2 / 100) * 100 + honba * 100;
-    const from = [0, 1, 2, 3].filter(i => i !== winner).map(i => ({ player: i, amount: perPlayer }));
+    const perPlayer = Math.ceil((basePoints * 2) / 100) * 100 + honba * 100;
+    const from = [0, 1, 2, 3]
+      .filter((i) => i !== winner)
+      .map((i) => ({ player: i, amount: perPlayer }));
     const winnerGets = perPlayer * 3 + riichiBonus;
     return { from, winnerGets };
   } else {
-    const parentAmount = Math.ceil(basePoints * 2 / 100) * 100 + honba * 100;
+    const parentAmount = Math.ceil((basePoints * 2) / 100) * 100 + honba * 100;
     const childAmount = Math.ceil(basePoints / 100) * 100 + honba * 100;
     const from = [0, 1, 2, 3]
-      .filter(i => i !== winner)
-      .map(i => ({ player: i, amount: i === dealer ? parentAmount : childAmount }));
+      .filter((i) => i !== winner)
+      .map((i) => ({ player: i, amount: i === dealer ? parentAmount : childAmount }));
     const winnerGets = from.reduce((sum, p) => sum + p.amount, 0) + riichiBonus;
     return { from, winnerGets };
   }

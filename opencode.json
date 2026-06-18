@@ -1,0 +1,32 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "serena": {
+      "type": "local",
+      "enabled": true,
+      "command": [
+        "serena",
+        "start-mcp-server",
+        "--project-from-cwd",
+        "--context",
+        "ide"
+      ]
+    },
+    "codegraph": {
+      "type": "local",
+      "command": [
+        "codegraph",
+        "serve",
+        "--mcp"
+      ],
+      "enabled": true
+    },
+    "context-mode": {
+      "type": "local",
+      "command": [
+        "context-mode"
+      ],
+      "enabled": true
+    },
+  }
+}

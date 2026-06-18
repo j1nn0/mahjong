@@ -222,7 +222,7 @@ function decomposeByRemovingGroups(
   return null;
 }
 
-function decomposeStandardHand(tiles: readonly Tile[], melds: readonly Meld[]): Group[] | null {
+export function decomposeStandardHand(tiles: readonly Tile[], melds: readonly Meld[]): Group[] | null {
   const counts = tilesToCounts(tiles);
   const meldGroups: Group[] = melds.map(m => ({
     type: m.type === MeldType.Chi ? 'sequence' as const :
@@ -278,7 +278,7 @@ export function detectYaku(
   const { closedTiles, melds, winTile, isTsumo, roundWind, playerWind, isRiichi } = params;
   const allTiles = [...closedTiles, winTile, ...melds.flatMap(m => m.tiles)];
   const counts = tilesToCounts(allTiles);
-  const isClosed = melds.length === 0;
+  const isClosed = melds.every(m => m.type === MeldType.ClosedKan);
   const resultingYaku: YakuResult[] = [];
   const handGroups: HandGroups = { groups: [], isClosed, winTile, isTsumo };
 
@@ -326,7 +326,7 @@ export function detectYaku(
   }
 
   // Standard decomposition
-  const standardGroups = decomposeStandardHand(allTiles, melds);
+  const standardGroups = decomposeStandardHand([...closedTiles, winTile], melds);
   if (!standardGroups) return { yaku: [], groups: null };
   handGroups.groups = standardGroups;
 
@@ -387,13 +387,14 @@ export function detectYaku(
     resultingYaku.push(metaResult(YakuId.Toitoi));
   }
 
-  // Sanankou (3+ concealed triplets)
-  if (triplets.filter(g => !g.isOpen).length >= 3) {
+  // Sanankou (3+ concealed triplets/quads)
+  const concealedGroups = [...triplets, ...quads].filter(g => !g.isOpen);
+  if (concealedGroups.length >= 3) {
     resultingYaku.push(metaResult(YakuId.Sanankou));
   }
 
-  // Suuankou (4 concealed triplets, closed)
-  if (isClosed && triplets.length === 4) {
+  // Suuankou (4 concealed triplets/quads, closed)
+  if (isClosed && concealedGroups.length === 4) {
     const winIdx = tileToIndex(winTile);
     const isTankiWait = pairs.some(g => tileToIndex(g.tiles[0]!) === winIdx);
     resultingYaku.push(metaResult(isTankiWait ? YakuId.SuuankouTanki : YakuId.Suuankou));
@@ -538,7 +539,7 @@ export function detectYaku(
   // Haitei / Houtei
   if (params.isHaitei) resultingYaku.push(metaResult(YakuId.Haitei));
   if (params.isHoutei) resultingYaku.push(metaResult(YakuId.Houtei));
-  if (params.isRinshan) resultingYaku.push(metaResult(YakuId.Rinshan));
+  if (params.isRinshan && isTsumo) resultingYaku.push(metaResult(YakuId.Rinshan));
   if (params.isChankan) resultingYaku.push(metaResult(YakuId.Chankan));
 
   return { yaku: resultingYaku, groups: handGroups };

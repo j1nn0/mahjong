@@ -1,21 +1,53 @@
-import React, { useReducer, useEffect, useState, useRef } from 'react';
-import { Text, Box, useInput } from 'ink';
-import { createInitialState, gameReducer, normalizeGameState, processAiTurn } from '../state/GameState.js';
-import { saveGame, loadGame, clearSave } from '../state/persistence.js';
-import type { ClaimOption, GameAction, GameState } from '../state/GameState.js';
-import { formatTile, getDoraIndicators, tileToUnicode } from '../game/tiles.js';
-import { isWinningHand, tilesToCounts } from '../game/agari.js';
-import { type Meld, MeldType, type Tile, Suit } from '../game/types.js';
+import React, { useReducer, useEffect, useState, useRef } from "react";
+import { Text, Box, useInput, useStdout } from "ink";
+import {
+  createInitialState,
+  gameReducer,
+  normalizeGameState,
+  processAiTurn,
+} from "../state/GameState.js";
+import { saveGame, loadGame, clearSave } from "../state/persistence.js";
+import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
+import { formatTile, getDoraIndicators, tileToUnicode } from "../game/tiles.js";
+import { isWinningHand, tilesToCounts } from "../game/agari.js";
+import { type Meld, MeldType, type Tile, Suit } from "../game/types.js";
+
+// ── Display helpers ────────────────────────────────────────────────
+
+function stringDisplayWidth(str: string): number {
+  let width = 0;
+  for (const char of str) {
+    const code = char.codePointAt(0) ?? 0;
+    if (
+      (code >= 0x3000 && code <= 0x303f) || // CJK punctuation
+      (code >= 0x3040 && code <= 0x309f) || // Hiragana
+      (code >= 0x30a0 && code <= 0x30ff) || // Katakana
+      (code >= 0x4e00 && code <= 0x9fff) || // CJK ideographs
+      (code >= 0xff01 && code <= 0xff5e) || // Fullwidth ASCII
+      (code >= 0xffe0 && code <= 0xffe6) // Fullwidth symbols
+    ) {
+      width += 2;
+    } else {
+      width += 1;
+    }
+  }
+  return width;
+}
 
 // ── Color helpers ──────────────────────────────────────────────────
 
 function tileColor(tile: Tile): string {
   switch (tile.suit) {
-    case Suit.Man: return 'red';
-    case Suit.Pin: return 'blue';
-    case Suit.Sou: return 'green';
-    case Suit.Wind: return 'magenta';
-    case Suit.Dragon: return 'yellow';
+    case Suit.Man:
+      return "red";
+    case Suit.Pin:
+      return "blue";
+    case Suit.Sou:
+      return "green";
+    case Suit.Wind:
+      return "magenta";
+    case Suit.Dragon:
+      return "yellow";
   }
 }
 
@@ -32,8 +64,8 @@ const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, riichi, isHum
   if (!isHuman) {
     return (
       <Text>
-        {riichi ? 'リーチ! ' : ''}
-        {'🀫 '.repeat(tiles.length)}
+        {riichi ? "リーチ! " : ""}
+        {"🀫 ".repeat(tiles.length)}
       </Text>
     );
   }
@@ -45,7 +77,9 @@ const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, riichi, isHum
         const isSelected = i === selectedIndex;
         return (
           <Box key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`} width={3}>
-            <Text color={tileColor(tile)} inverse={isSelected}>{char}</Text>
+            <Text color={tileColor(tile)} inverse={isSelected}>
+              {char}
+            </Text>
           </Box>
         );
       })}
@@ -64,8 +98,12 @@ const DiscardView: React.FC<DiscardViewProps> = ({ discards, riichi }) => {
   if (discards.length === 0) return <Text dimColor>--</Text>;
   return (
     <Text>
-      {riichi ? '(リーチ) ' : ''}
-      {discards.map((t, i) => <Text key={i} color={tileColor(t)}>{formatTile(t)} </Text>)}
+      {riichi ? "(リーチ) " : ""}
+      {discards.map((t, i) => (
+        <Text key={i} color={tileColor(t)}>
+          {formatTile(t)}{" "}
+        </Text>
+      ))}
     </Text>
   );
 };
@@ -84,9 +122,11 @@ const MeldView: React.FC<MeldViewProps> = ({ melds }) => {
         <Text key={i}>
           [
           {meld.tiles.map((tile, j) => (
-            <Text key={j} color={tileColor(tile)}>{formatTile(tile)} </Text>
+            <Text key={j} color={tileColor(tile)}>
+              {formatTile(tile)}{" "}
+            </Text>
           ))}
-          ] {' '}
+          ]{" "}
         </Text>
       ))}
     </Text>
@@ -120,29 +160,59 @@ const DoraView: React.FC<DoraViewProps> = ({ state }) => {
 
 const claimLabel = (option: ClaimOption): string => {
   switch (option.type) {
-    case 'ron': return 'ロン';
-    case 'chi': return 'チー';
-    case 'pon': return 'ポン';
-    case 'daiminkan': return 'カン';
+    case "ron":
+      return "ロン";
+    case "chi":
+      return "チー";
+    case "pon":
+      return "ポン";
+    case "daiminkan":
+      return "カン";
   }
 };
 
 // ── Opponent info ──────────────────────────────────────────────────
 interface OpponentInfoProps {
   wind: string;
+  relativeLabel?: string;
   discards: readonly Tile[];
   melds: readonly Meld[];
   riichi: boolean;
   points: number;
   tileCount: number;
+  centerIn?: number;
 }
 
-const OpponentInfo: React.FC<OpponentInfoProps> = ({ wind, discards, melds, riichi, points, tileCount }) => {
+const OpponentInfo: React.FC<OpponentInfoProps> = ({
+  wind,
+  relativeLabel,
+  discards,
+  melds,
+  riichi,
+  points,
+  tileCount,
+  centerIn,
+}) => {
+  const label = relativeLabel ? `${relativeLabel} ${wind}` : wind;
+  const labelText = `${label} (${points}点) ${riichi ? "(リーチ)" : ""} 手牌:${tileCount}`;
+  const leftPadding =
+    centerIn && centerIn > stringDisplayWidth(labelText)
+      ? Math.floor((centerIn - stringDisplayWidth(labelText)) / 2)
+      : 0;
+  const pad = " ".repeat(leftPadding);
   return (
     <Box flexDirection="column" marginBottom={1}>
-      <Text bold>{wind} ({points}点) {riichi ? '(リーチ)' : ''} 手牌:{tileCount}</Text>
-      <Box><Text>副露: </Text><MeldView melds={melds} /></Box>
-      <Box><DiscardView discards={discards} riichi={riichi} /></Box>
+      <Text bold>
+        {pad}
+        {labelText}
+      </Text>
+      <Box marginLeft={leftPadding}>
+        <Text>副露: </Text>
+        <MeldView melds={melds} />
+      </Box>
+      <Box marginLeft={leftPadding}>
+        <DiscardView discards={discards} riichi={riichi} />
+      </Box>
     </Box>
   );
 };
@@ -195,17 +265,21 @@ const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, mess
         {canRiichi && <Text color="yellow"> [R]リーチ </Text>}
         {canKan && <Text color="cyan"> [K]カン </Text>}
       </Box>
-      <Box marginTop={1}><Text dimColor>{'← →: 選択  Enter: 打牌'}</Text></Box>
-      <Box marginTop={1}><Text>{message}</Text></Box>
+      <Box marginTop={1}>
+        <Text dimColor>{"← →: 選択  Enter: 打牌"}</Text>
+      </Box>
+      <Box marginTop={1}>
+        <Text>{message}</Text>
+      </Box>
     </Box>
   );
 };
 
 // ── Main game component ───────────────────────────────────────────
 
-const WIND_NAMES = ['東', '南', '西', '北'];
+const WIND_NAMES = ["東", "南", "西", "北"];
 const roundName = (roundNumber: number) => `東${roundNumber}局`;
-const turnTileCount = (player: GameState['players'][number]) =>
+const turnTileCount = (player: GameState["players"][number]) =>
   player.hand.length + player.melds.reduce((sum, meld) => sum + meld.tiles.length, 0);
 const tileKindKey = (tile: Tile) => `${tile.suit}:${tile.value}`;
 
@@ -214,43 +288,55 @@ const App: React.FC = () => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
   const processingRef = useRef(false);
-  const [startupMode, setStartupMode] = useState<'loading' | 'choose' | 'ready'>('loading');
+  const [startupMode, setStartupMode] = useState<"loading" | "choose" | "ready">("loading");
   const [savedState, setSavedState] = useState<GameState | null>(null);
+  const { stdout } = useStdout();
+  const terminalWidth = stdout.columns ?? 80;
 
   useEffect(() => {
     const saved = loadGame<GameState>();
-    if (saved && saved.phase !== 'ended') {
+    if (saved && saved.phase !== "ended") {
       setSavedState(normalizeGameState(saved));
-      setStartupMode('choose');
+      setStartupMode("choose");
     } else {
-      dispatch({ type: 'START_GAME' });
-      setStartupMode('ready');
+      dispatch({ type: "START_GAME" });
+      setStartupMode("ready");
     }
   }, []);
 
   // 状態が変わったら自動セーブ
   useEffect(() => {
-    if (startupMode !== 'ready') return;
-    if (state.phase === 'ended') {
+    if (startupMode !== "ready") return;
+    if (state.phase === "ended") {
       clearSave();
-    } else if (state.phase === 'playing' || state.phase === 'claiming' || state.phase === 'roundEnded') {
+    } else if (
+      state.phase === "playing" ||
+      state.phase === "claiming" ||
+      state.phase === "roundEnded"
+    ) {
       saveGame(state);
     }
   }, [state, startupMode]);
   // Auto-draw for human
   useEffect(() => {
-    if (startupMode !== 'ready') return;
-    if (state.phase !== 'playing') return;
+    if (startupMode !== "ready") return;
+    if (state.phase !== "playing") return;
     if (state.currentPlayer !== 0) return;
     if (turnTileCount(state.players[0]) === 13) {
-      dispatch({ type: 'DRAW', player: 0 });
+      dispatch({ type: "DRAW", player: 0 });
     }
-  }, [startupMode, state.currentPlayer, state.phase, state.players[0].hand.length, state.players[0].melds.length]);
+  }, [
+    startupMode,
+    state.currentPlayer,
+    state.phase,
+    state.players[0].hand.length,
+    state.players[0].melds.length,
+  ]);
 
   // Riichi auto-tsumogiri: リーチ中のツモ切り（強制）
   useEffect(() => {
-    if (startupMode !== 'ready') return;
-    if (state.phase !== 'playing') return;
+    if (startupMode !== "ready") return;
+    if (state.phase !== "playing") return;
     if (state.currentPlayer !== 0) return;
     if (!state.players[0].riichi) return;
     if (state.players[0].hand.length !== 14) return;
@@ -258,22 +344,29 @@ const App: React.FC = () => {
 
     // 自摸和ならTSUMO
     if (isWinningHand(tilesToCounts(state.players[0].hand))) {
-      dispatch({ type: 'TSUMO', player: 0 });
+      dispatch({ type: "TSUMO", player: 0 });
       return;
     }
 
-    dispatch({ type: 'DISCARD', player: 0, tile: state.lastDrawnTile });
-  }, [startupMode, state.phase, state.currentPlayer, state.players[0].riichi, state.players[0].hand.length, state.lastDrawnTile]);
+    dispatch({ type: "DISCARD", player: 0, tile: state.lastDrawnTile });
+  }, [
+    startupMode,
+    state.phase,
+    state.currentPlayer,
+    state.players[0].riichi,
+    state.players[0].hand.length,
+    state.lastDrawnTile,
+  ]);
 
   // AI turn processing (ref でレンダリングをトリガしない)
   useEffect(() => {
-    if (startupMode !== 'ready') return;
-    if (state.phase === 'ended') return;
-    if (state.phase === 'roundEnded') return;
+    if (startupMode !== "ready") return;
+    if (state.phase === "ended") return;
+    if (state.phase === "roundEnded") return;
     if (processingRef.current) return;
 
-    const isAiTurn = state.phase === 'playing' && state.currentPlayer !== 0;
-    const isAiClaim = state.phase === 'claiming' && !state.claimOptions.some(c => c.player === 0);
+    const isAiTurn = state.phase === "playing" && state.currentPlayer !== 0;
+    const isAiClaim = state.phase === "claiming" && !state.claimOptions.some((c) => c.player === 0);
 
     if (isAiTurn || isAiClaim) {
       processingRef.current = true;
@@ -290,107 +383,117 @@ const App: React.FC = () => {
   }, [state, startupMode]);
 
   const hand = state.players[0].hand;
-  const humanCanTsumo = state.phase === 'playing' && state.currentPlayer === 0 && turnTileCount(state.players[0]) === 14;
+  const humanCanTsumo =
+    state.phase === "playing" &&
+    state.currentPlayer === 0 &&
+    turnTileCount(state.players[0]) === 14;
   const humanCanRiichi = (() => {
-    if (state.phase !== 'playing' || state.currentPlayer !== 0) return false;
+    if (state.phase !== "playing" || state.currentPlayer !== 0) return false;
     const p = state.players[0];
     return !p.riichi && p.points >= 1000;
   })();
   const humanCanAnkan = (() => {
-    if (state.phase !== 'playing' || state.currentPlayer !== 0 || state.players[0].riichi) return false;
+    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi)
+      return false;
     const tile = hand[selectedIndex];
     if (!tile) return false;
-    return hand.filter(t => tileKindKey(t) === tileKindKey(tile)).length >= 4;
+    return hand.filter((t) => tileKindKey(t) === tileKindKey(tile)).length >= 4;
   })();
   const humanCanKakan = (() => {
-    if (state.phase !== 'playing' || state.currentPlayer !== 0 || state.players[0].riichi) return false;
+    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi)
+      return false;
     const tile = hand[selectedIndex];
     if (!tile) return false;
-    return state.players[0].melds.some(meld => (
-      meld.type === MeldType.Poon &&
-      meld.tiles.some(meldTile => tileKindKey(meldTile) === tileKindKey(tile))
-    ));
+    return state.players[0].melds.some(
+      (meld) =>
+        meld.type === MeldType.Poon &&
+        meld.tiles.some((meldTile) => tileKindKey(meldTile) === tileKindKey(tile)),
+    );
   })();
   const humanCanKan = humanCanAnkan || humanCanKakan;
 
   // Keyboard input
   useInput((input, key) => {
-    if (startupMode === 'choose') {
-      if (input === 'r' || key.return) {
-        if (savedState) dispatch({ type: 'RESTORE', state: savedState } as GameAction);
-        setStartupMode('ready');
+    if (startupMode === "choose") {
+      if (input === "r" || key.return) {
+        if (savedState) dispatch({ type: "RESTORE", state: savedState } as GameAction);
+        setStartupMode("ready");
         return;
       }
-      if (input === 'n' || input === 'q') {
+      if (input === "n" || input === "q") {
         clearSave();
-        dispatch({ type: 'START_GAME' });
+        dispatch({ type: "START_GAME" });
         setSelectedIndex(0);
-        setStartupMode('ready');
+        setStartupMode("ready");
         return;
       }
       return;
     }
 
-    if (startupMode !== 'ready') return;
+    if (startupMode !== "ready") return;
 
-    if (state.phase === 'roundEnded') {
-      if (input === 'n' || input === ' ' || key.return) {
-        dispatch({ type: 'NEXT_ROUND' });
+    if (state.phase === "roundEnded") {
+      if (input === "n" || input === " " || key.return) {
+        dispatch({ type: "NEXT_ROUND" });
         setSelectedIndex(0);
       }
       return;
     }
 
     // Game over screen
-    if (state.phase === 'ended') {
-      if (input === 'q' || input === ' ') {
-        dispatch({ type: 'START_GAME' });
+    if (state.phase === "ended") {
+      if (input === "q" || input === " ") {
+        dispatch({ type: "START_GAME" });
         setSelectedIndex(0);
       }
       return;
     }
 
     // Claiming phase
-    if (state.phase === 'claiming') {
-      const humanOptions = state.claimOptions.filter(c => c.player === 0);
+    if (state.phase === "claiming") {
+      const humanOptions = state.claimOptions.filter((c) => c.player === 0);
       if (humanOptions.length === 0) return; // AI handles itself
 
       if (key.leftArrow) {
-        setClaimSelectedIndex(prev => Math.max(0, prev - 1));
+        setClaimSelectedIndex((prev) => Math.max(0, prev - 1));
         return;
       }
       if (key.rightArrow) {
-        setClaimSelectedIndex(prev => Math.min(humanOptions.length - 1, prev + 1));
+        setClaimSelectedIndex((prev) => Math.min(humanOptions.length - 1, prev + 1));
         return;
       }
 
-      if (input === 'l') {
-        if (humanOptions.some(o => o.type === 'ron')) {
-          dispatch({ type: 'RON', winner: 0 });
+      if (input === "l") {
+        if (humanOptions.some((o) => o.type === "ron")) {
+          dispatch({ type: "RON", winner: 0 });
           return;
         }
       }
-      if (input === 'c') {
-        const chiOpts = humanOptions.filter(o => o.type === 'chi');
+      if (input === "c") {
+        const chiOpts = humanOptions.filter((o) => o.type === "chi");
         if (chiOpts.length > 0) {
-          dispatch({ type: 'CHI', player: 0, optionIndex: state.claimOptions.indexOf(chiOpts[0]!) });
+          dispatch({
+            type: "CHI",
+            player: 0,
+            optionIndex: state.claimOptions.indexOf(chiOpts[0]!),
+          });
           return;
         }
       }
-      if (input === 'p') {
-        if (humanOptions.some(o => o.type === 'pon')) {
-          dispatch({ type: 'PON', player: 0 });
+      if (input === "p") {
+        if (humanOptions.some((o) => o.type === "pon")) {
+          dispatch({ type: "PON", player: 0 });
           return;
         }
       }
-      if (input === 'k') {
-        if (humanOptions.some(o => o.type === 'daiminkan')) {
-          dispatch({ type: 'DAIMINKAN', player: 0 });
+      if (input === "k") {
+        if (humanOptions.some((o) => o.type === "daiminkan")) {
+          dispatch({ type: "DAIMINKAN", player: 0 });
           return;
         }
       }
-      if (input === ' ' || input === 'q') {
-        dispatch({ type: 'PASS_CLAIM' });
+      if (input === " " || input === "q") {
+        dispatch({ type: "PASS_CLAIM" });
         return;
       }
       return;
@@ -401,49 +504,52 @@ const App: React.FC = () => {
 
     // リーチ中は強制ツモ切り: 自摸和(T)以外は受け付けない
     if (state.players[0].riichi) {
-      if (input === 't') {
-        dispatch({ type: 'TSUMO', player: 0 });
+      if (input === "t") {
+        dispatch({ type: "TSUMO", player: 0 });
       }
       return;
     }
 
     if (key.leftArrow) {
-      setSelectedIndex(prev => hand.length > 0 ? (prev - 1 + hand.length) % hand.length : 0);
+      setSelectedIndex((prev) => (hand.length > 0 ? (prev - 1 + hand.length) % hand.length : 0));
       return;
     }
     if (key.rightArrow) {
-      setSelectedIndex(prev => hand.length > 0 ? (prev + 1) % hand.length : 0);
+      setSelectedIndex((prev) => (hand.length > 0 ? (prev + 1) % hand.length : 0));
       return;
     }
 
     const num = parseInt(input, 10);
-    if (num >= 1 && num <= hand.length) { setSelectedIndex(num - 1); return; }
+    if (num >= 1 && num <= hand.length) {
+      setSelectedIndex(num - 1);
+      return;
+    }
 
     if (key.return) {
       if (hand.length === 0) return;
-      dispatch({ type: 'DISCARD', player: 0, tile: hand[selectedIndex]! });
+      dispatch({ type: "DISCARD", player: 0, tile: hand[selectedIndex]! });
       setSelectedIndex(0);
       return;
     }
 
-    if (input === 'r' && humanCanRiichi) {
-      dispatch({ type: 'DECLARE_RIICHI', player: 0, discardTile: hand[selectedIndex]! });
+    if (input === "r" && humanCanRiichi) {
+      dispatch({ type: "DECLARE_RIICHI", player: 0, discardTile: hand[selectedIndex]! });
       return;
     }
 
-    if (input === 'k') {
+    if (input === "k") {
       if (hand.length === 0) return;
-      dispatch({ type: humanCanKakan ? 'KAKAN' : 'ANKAN', player: 0, tile: hand[selectedIndex]! });
+      dispatch({ type: humanCanKakan ? "KAKAN" : "ANKAN", player: 0, tile: hand[selectedIndex]! });
       return;
     }
 
-    if (input === 't') {
-      dispatch({ type: 'TSUMO', player: 0 });
+    if (input === "t") {
+      dispatch({ type: "TSUMO", player: 0 });
       return;
     }
   });
 
-  if (startupMode === 'loading') {
+  if (startupMode === "loading") {
     return (
       <Box padding={1}>
         <Text>読み込み中...</Text>
@@ -451,7 +557,7 @@ const App: React.FC = () => {
     );
   }
 
-  if (startupMode === 'choose') {
+  if (startupMode === "choose") {
     return (
       <Box flexDirection="column" padding={1}>
         <Text bold>保存された対戦があります</Text>
@@ -464,37 +570,57 @@ const App: React.FC = () => {
     );
   }
 
-  if (state.phase === 'ended' || state.phase === 'roundEnded') {
+  if (state.phase === "ended" || state.phase === "roundEnded") {
     const sr = state.lastScoreResult;
     return (
       <Box flexDirection="column" padding={1}>
         <Text bold>{state.message}</Text>
         <Text dimColor>
-          {state.phase === 'roundEnded'
+          {state.phase === "roundEnded"
             ? `次局: ${roundName(state.roundNumber)} / 親: P${state.dealer + 1} / 本場: ${state.honba} / 供託: ${state.riichiSticks}`
-            : '対戦終了'}
+            : "対戦終了"}
         </Text>
         <DoraView state={state} />
         {sr && (
           <>
-            <Text dimColor>{'─'.repeat(40)}</Text>
+            <Text dimColor>{"─".repeat(40)}</Text>
             <Box flexDirection="column">
               <Text bold>-- スコア --</Text>
-              <Text>役: {sr.yaku.filter(y => !y.yakuman).map(y => y.name).join('・')}</Text>
-              {sr.yakuman > 0 && <Text color="red" bold>役満 ×{sr.yakuman}</Text>}
-              <Text>飜: {sr.han - sr.doraHan} (役) + {sr.doraHan} (ドラ) = {sr.han}</Text>
+              <Text>
+                役:{" "}
+                {sr.yaku
+                  .filter((y) => !y.yakuman)
+                  .map((y) => y.name)
+                  .join("・")}
+              </Text>
+              {sr.yakuman > 0 && (
+                <Text color="red" bold>
+                  役満 ×{sr.yakuman}
+                </Text>
+              )}
+              <Text>
+                飜: {sr.han - sr.doraHan} (役) + {sr.doraHan} (ドラ) = {sr.han}
+              </Text>
               <Text>符: {sr.fu}</Text>
-              {sr.limit !== 'none' && sr.limit !== 'yakuman' && <Text>満貫区分: {sr.limit}</Text>}
-              <Text>支払い: {sr.payment.from.map(f => `P${f.player + 1}: ${f.amount}点`).join(', ')}</Text>
-              <Text bold color="yellow">獲得: {sr.score}点</Text>
+              {sr.limit !== "none" && sr.limit !== "yakuman" && <Text>満貫区分: {sr.limit}</Text>}
+              <Text>
+                支払い: {sr.payment.from.map((f) => `P${f.player + 1}: ${f.amount}点`).join(", ")}
+              </Text>
+              <Text bold color="yellow">
+                獲得: {sr.score}点
+              </Text>
             </Box>
           </>
         )}
         <Box marginTop={1}>
-          {[0, 1, 2, 3].map(i => (
+          {[0, 1, 2, 3].map((i) => (
             <Box key={i} marginRight={2}>
-              <Text>{i === 0 ? 'あなた' : `P${i + 1}`}({WIND_NAMES[state.players[i].wind]}家): </Text>
-              <Text bold={true} color={i === state.winner ? 'yellow' : 'white'}>{state.players[i].points}点</Text>
+              <Text>
+                {i === 0 ? "あなた" : `P${i + 1}`}({WIND_NAMES[state.players[i].wind]}家):{" "}
+              </Text>
+              <Text bold={true} color={i === state.winner ? "yellow" : "white"}>
+                {state.players[i].points}点
+              </Text>
             </Box>
           ))}
         </Box>
@@ -503,119 +629,200 @@ const App: React.FC = () => {
             <Text bold>最終順位</Text>
             {state.finalRanking.map((player, index) => (
               <Text key={player}>
-                {index + 1}位: {player === 0 ? 'あなた' : `P${player + 1}`} {state.players[player].points}点
+                {index + 1}位: {player === 0 ? "あなた" : `P${player + 1}`}{" "}
+                {state.players[player].points}点
               </Text>
             ))}
           </Box>
         )}
         <Text dimColor>
-          {state.phase === 'roundEnded' ? 'N / Enter / Space: 次局へ' : 'SpaceまたはQで新しいゲーム'}
+          {state.phase === "roundEnded"
+            ? "N / Enter / Space: 次局へ"
+            : "SpaceまたはQで新しいゲーム"}
         </Text>
       </Box>
     );
   }
 
   // Claiming screen
-  if (state.phase === 'claiming') {
-    const humanOptions = state.claimOptions.filter(c => c.player === 0);
+  if (state.phase === "claiming") {
+    const humanOptions = state.claimOptions.filter((c) => c.player === 0);
     return (
-      <Box flexDirection="column" padding={1}>
-        <Text bold>{roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}</Text>
-        <DoraView state={state} />
-        <Text dimColor>{'─'.repeat(40)}</Text>
-        <OpponentInfo
-          wind={`${WIND_NAMES[state.players[2].wind]}家`}
-          discards={state.players[2].discards} riichi={state.players[2].riichi}
-          melds={state.players[2].melds}
-          points={state.players[2].points} tileCount={state.players[2].hand.length}
-        />
-        <OpponentInfo
-          wind={`${WIND_NAMES[state.players[1].wind]}家`}
-          discards={state.players[1].discards} riichi={state.players[1].riichi}
-          melds={state.players[1].melds}
-          points={state.players[1].points} tileCount={state.players[1].hand.length}
-        />
-        <OpponentInfo
-          wind={`${WIND_NAMES[state.players[3].wind]}家`}
-          discards={state.players[3].discards} riichi={state.players[3].riichi}
-          melds={state.players[3].melds}
-          points={state.players[3].points} tileCount={state.players[3].hand.length}
-        />
-        <Text dimColor>{'─'.repeat(40)}</Text>
-        <Box marginTop={1} marginBottom={1}>
-          <Text>捨て牌: </Text>
-          {state.lastDiscard ? <Text color={tileColor(state.lastDiscard.tile)}>{formatTile(state.lastDiscard.tile)}</Text> : null}
+      <Box width={terminalWidth}>
+        <Box flexDirection="column" padding={1} width="100%">
+          <Text bold>
+            {roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}
+          </Text>
+          <DoraView state={state} />
+          <Text dimColor>{"─".repeat(40)}</Text>
+          {/* 対面 (across) - top center */}
+          <Box width="100%">
+            <OpponentInfo
+              wind={`${WIND_NAMES[state.players[2].wind]}家`}
+              relativeLabel="対面"
+              discards={state.players[2].discards}
+              riichi={state.players[2].riichi}
+              melds={state.players[2].melds}
+              points={state.players[2].points}
+              tileCount={state.players[2].hand.length}
+              centerIn={terminalWidth - 2}
+            />
+          </Box>
+          {/* Side players: 上家 (left) and 下家 (right) */}
+          <Box flexDirection="row" justifyContent="space-between" width="100%">
+            <Box flexDirection="column">
+              <OpponentInfo
+                wind={`${WIND_NAMES[state.players[3].wind]}家`}
+                relativeLabel="上家"
+                discards={state.players[3].discards}
+                riichi={state.players[3].riichi}
+                melds={state.players[3].melds}
+                points={state.players[3].points}
+                tileCount={state.players[3].hand.length}
+              />
+            </Box>
+            <Box flexDirection="column">
+              <OpponentInfo
+                wind={`${WIND_NAMES[state.players[1].wind]}家`}
+                relativeLabel="下家"
+                discards={state.players[1].discards}
+                riichi={state.players[1].riichi}
+                melds={state.players[1].melds}
+                points={state.players[1].points}
+                tileCount={state.players[1].hand.length}
+              />
+            </Box>
+          </Box>
+          <Text dimColor>{"─".repeat(40)}</Text>
+          <Box marginTop={1} marginBottom={1}>
+            <Text>捨て牌: </Text>
+            {state.lastDiscard ? (
+              <Text color={tileColor(state.lastDiscard.tile)}>
+                {formatTile(state.lastDiscard.tile)}
+              </Text>
+            ) : null}
+          </Box>
+          <Text dimColor>{"─".repeat(40)}</Text>
+          <Text bold>
+            {WIND_NAMES[state.players[0].wind]}家 (あなた) ({state.players[0].points}点)
+          </Text>
+          <Box>
+            <Text bold>あなたの捨て牌: </Text>
+            <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
+          </Box>
+          <Box>
+            <Text bold>あなたの副露: </Text>
+            <MeldView melds={state.players[0].melds} />
+          </Box>
+          <HandView
+            tiles={hand}
+            selectedIndex={selectedIndex}
+            riichi={state.players[0].riichi}
+            isHuman={true}
+          />
+          {humanOptions.length > 0 && (
+            <ClaimMenu options={humanOptions} selectedIndex={claimSelectedIndex} />
+          )}
+          <Box marginTop={1}>
+            <Text>{state.message}</Text>
+          </Box>
         </Box>
-        <Text dimColor>{'─'.repeat(40)}</Text>
-        <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) ({state.players[0].points}点)</Text>
-        <Box>
-          <Text bold>あなたの捨て牌: </Text>
-          <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
-        </Box>
-        <Box>
-          <Text bold>あなたの副露: </Text>
-          <MeldView melds={state.players[0].melds} />
-        </Box>
-        <HandView tiles={hand} selectedIndex={selectedIndex} riichi={state.players[0].riichi} isHuman={true} />
-        {humanOptions.length > 0 && (
-          <ClaimMenu options={humanOptions} selectedIndex={claimSelectedIndex} />
-        )}
-        <Box marginTop={1}><Text>{state.message}</Text></Box>
       </Box>
     );
   }
 
   // Normal play screen
   return (
-    <Box flexDirection="column" padding={1}>
-      <Text bold>{roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}</Text>
-      <DoraView state={state} />
-      <Box flexDirection="column">
-        <OpponentInfo
-          wind={`${WIND_NAMES[state.players[2].wind]}家`}
-          discards={state.players[2].discards} riichi={state.players[2].riichi}
-          melds={state.players[2].melds}
-          points={state.players[2].points} tileCount={state.players[2].hand.length}
-        />
-        <OpponentInfo
-          wind={`${WIND_NAMES[state.players[1].wind]}家`}
-          discards={state.players[1].discards} riichi={state.players[1].riichi}
-          melds={state.players[1].melds}
-          points={state.players[1].points} tileCount={state.players[1].hand.length}
-        />
-        <OpponentInfo
-          wind={`${WIND_NAMES[state.players[3].wind]}家`}
-          discards={state.players[3].discards} riichi={state.players[3].riichi}
-          melds={state.players[3].melds}
-          points={state.players[3].points} tileCount={state.players[3].hand.length}
-        />
-      </Box>
-      <Text dimColor>{'─'.repeat(40)}</Text>
-      <Box marginTop={1} marginBottom={1}>
-        <Text bold>捨て牌: </Text>
-        {state.lastDiscard ? (
-          <Text color={tileColor(state.lastDiscard.tile)}>
-            {formatTile(state.lastDiscard.tile)} ({['あなた','P2','P3','P4'][state.lastDiscard.player]})
+    <Box width={terminalWidth}>
+      <Box flexDirection="column" padding={1} width="100%">
+        <Text bold>
+          {roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}
+        </Text>
+        <DoraView state={state} />
+        <Box flexDirection="column" width="100%">
+          {/* 対面 (across) - top center */}
+          <Box width="100%">
+            <OpponentInfo
+              wind={`${WIND_NAMES[state.players[2].wind]}家`}
+              relativeLabel="対面"
+              discards={state.players[2].discards}
+              riichi={state.players[2].riichi}
+              melds={state.players[2].melds}
+              points={state.players[2].points}
+              tileCount={state.players[2].hand.length}
+              centerIn={terminalWidth - 2}
+            />
+          </Box>
+          {/* Side players: 上家 (left) and 下家 (right) */}
+          <Box flexDirection="row" justifyContent="space-between" width="100%">
+            <Box flexDirection="column">
+              <OpponentInfo
+                wind={`${WIND_NAMES[state.players[3].wind]}家`}
+                relativeLabel="上家"
+                discards={state.players[3].discards}
+                riichi={state.players[3].riichi}
+                melds={state.players[3].melds}
+                points={state.players[3].points}
+                tileCount={state.players[3].hand.length}
+              />
+            </Box>
+            <Box flexDirection="column">
+              <OpponentInfo
+                wind={`${WIND_NAMES[state.players[1].wind]}家`}
+                relativeLabel="下家"
+                discards={state.players[1].discards}
+                riichi={state.players[1].riichi}
+                melds={state.players[1].melds}
+                points={state.players[1].points}
+                tileCount={state.players[1].hand.length}
+              />
+            </Box>
+          </Box>
+        </Box>
+        <Text dimColor>{"─".repeat(40)}</Text>
+        <Box marginTop={1} marginBottom={1}>
+          <Text bold>捨て牌: </Text>
+          {state.lastDiscard ? (
+            <Text color={tileColor(state.lastDiscard.tile)}>
+              {formatTile(state.lastDiscard.tile)} (
+              {["あなた", "下家", "対面", "上家"][state.lastDiscard.player]})
+            </Text>
+          ) : (
+            <Text dimColor>まだありません</Text>
+          )}
+        </Box>
+        <Box>
+          <Text dimColor>
+            山残り: {state.wall.length} / リーチ棒: {state.riichiSticks}
           </Text>
-        ) : <Text dimColor>まだありません</Text>}
+        </Box>
+        <Text dimColor>{"─".repeat(40)}</Text>
+        <Box marginTop={1} marginBottom={1}>
+          <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
+          <Text dimColor>({state.players[0].points}点) </Text>
+          {state.players[0].riichi && <Text color="yellow">リーチ中 </Text>}
+        </Box>
+        <Box marginBottom={1}>
+          <Text bold>あなたの捨て牌: </Text>
+          <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
+        </Box>
+        <Box marginBottom={1}>
+          <Text bold>あなたの副露: </Text>
+          <MeldView melds={state.players[0].melds} />
+        </Box>
+        <HandView
+          tiles={hand}
+          selectedIndex={selectedIndex}
+          riichi={state.players[0].riichi}
+          isHuman={true}
+        />
+        <ActionBar
+          canTsumo={humanCanTsumo}
+          canRiichi={humanCanRiichi}
+          canKan={humanCanKan}
+          message={state.message}
+        />
       </Box>
-      <Box><Text dimColor>山残り: {state.wall.length} / リーチ棒: {state.riichiSticks}</Text></Box>
-      <Text dimColor>{'─'.repeat(40)}</Text>
-      <Box marginTop={1} marginBottom={1}>
-        <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
-        <Text dimColor>({state.players[0].points}点) </Text>
-        {state.players[0].riichi && <Text color="yellow">リーチ中 </Text>}
-      </Box>
-      <Box marginBottom={1}>
-        <Text bold>あなたの捨て牌: </Text>
-        <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
-      </Box>
-      <Box marginBottom={1}>
-        <Text bold>あなたの副露: </Text>
-        <MeldView melds={state.players[0].melds} />
-      </Box>
-      <HandView tiles={hand} selectedIndex={selectedIndex} riichi={state.players[0].riichi} isHuman={true} />
-      <ActionBar canTsumo={humanCanTsumo} canRiichi={humanCanRiichi} canKan={humanCanKan} message={state.message} />
     </Box>
   );
 };

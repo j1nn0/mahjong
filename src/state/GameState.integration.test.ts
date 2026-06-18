@@ -1,12 +1,12 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from 'vitest';
 import {
   gameReducer,
   dealRound,
   createInitialState,
   processAiTurn,
   sortClaimsByPriority,
-} from "./GameState.js";
-import type { GameState } from "./GameState.js";
+} from './GameState.js';
+import type { GameState } from './GameState.js';
 
 // ── Deterministic PRNG (mulberry32) ───────────────────────────────
 
@@ -30,62 +30,65 @@ function pointsTotal(state: GameState): number {
 
 function runFullGame(seed: number, maxIterations = 2000): GameState {
   const rng = mulberry32(seed);
-  let state = dealRound(createInitialState(), 0, 1, 0, 0, "start", rng);
+  let state = dealRound(createInitialState(), 0, 1, 0, 0, 'start', rng);
   let iterations = 0;
 
-  // Track consecutive claiming-phase dispatches to break cycles
+  // Track consecutive claiming-phase dispatches to break cycles.
+  // This is unrelated to the rinshan feature; kept as a safety net for edge
+  // cases where scoring fails on a detected winning hand and the fallback
+  // PASS_CLAIM does not reset the loop.
   let consecutiveClaims = 0;
   const MAX_CONSECUTIVE_CLAIMS = 100;
 
   // Assert initial points conservation
   expect(pointsTotal(state)).toBe(100000);
 
-  while (state.phase !== "ended" && iterations < maxIterations) {
+  while (state.phase !== 'ended' && iterations < maxIterations) {
     const beforeTotal = pointsTotal(state);
 
-    if (state.phase === "playing") {
+    if (state.phase === 'playing') {
       consecutiveClaims = 0; // reset on any playing-phase action
       const { action } = processAiTurn(state);
       if (action === null) {
         throw new Error(`processAiTurn returned null at iteration ${iterations}`);
       }
       state = gameReducer(state, action);
-    } else if (state.phase === "claiming") {
+    } else if (state.phase === 'claiming') {
       consecutiveClaims++;
       if (consecutiveClaims > MAX_CONSECUTIVE_CLAIMS || state.claimOptions.length === 0) {
         // Break out of a claiming cycle
-        state = gameReducer(state, { type: "PASS_CLAIM" });
+        state = gameReducer(state, { type: 'PASS_CLAIM' });
       } else {
         const sorted = sortClaimsByPriority(state.claimOptions, state.lastDiscard!.player);
         const best = sorted[0]!;
         const originalIndex = state.claimOptions.indexOf(best);
 
         let newState: GameState;
-        if (best.type === "ron") {
-          newState = gameReducer(state, { type: "RON", winner: best.player });
-        } else if (best.type === "chi") {
+        if (best.type === 'ron') {
+          newState = gameReducer(state, { type: 'RON', winner: best.player });
+        } else if (best.type === 'chi') {
           newState = gameReducer(state, {
-            type: "CHI",
+            type: 'CHI',
             player: best.player,
             optionIndex: originalIndex,
           });
-        } else if (best.type === "pon") {
-          newState = gameReducer(state, { type: "PON", player: best.player });
-        } else if (best.type === "daiminkan") {
-          newState = gameReducer(state, { type: "DAIMINKAN", player: best.player });
+        } else if (best.type === 'pon') {
+          newState = gameReducer(state, { type: 'PON', player: best.player });
+        } else if (best.type === 'daiminkan') {
+          newState = gameReducer(state, { type: 'DAIMINKAN', player: best.player });
         } else {
-          newState = gameReducer(state, { type: "PASS_CLAIM" });
+          newState = gameReducer(state, { type: 'PASS_CLAIM' });
         }
 
         // If the action didn't resolve claiming (e.g. scoring returns null
         // for a detected winning hand), fall back to pass to avoid an
         // infinite claiming loop.
-        if (newState.phase === "claiming") {
-          newState = gameReducer(state, { type: "PASS_CLAIM" });
+        if (newState.phase === 'claiming') {
+          newState = gameReducer(state, { type: 'PASS_CLAIM' });
         }
         state = newState;
       }
-    } else if (state.phase === "roundEnded") {
+    } else if (state.phase === 'roundEnded') {
       consecutiveClaims = 0;
       // Use dealRound directly with the seeded RNG instead of dispatching
       // NEXT_ROUND (which calls dealRound without a random source, letting
@@ -120,12 +123,12 @@ function runFullGame(seed: number, maxIterations = 2000): GameState {
 
 // ── Tests ─────────────────────────────────────────────────────────
 
-describe("full-game integration", () => {
-  it("completes east-only games deterministically", () => {
+describe('full-game integration', () => {
+  it('completes east-only games deterministically', () => {
     // ── First game: seed 100 ────────────────────────────────────
     const state1 = runFullGame(100);
 
-    expect(state1.phase).toBe("ended");
+    expect(state1.phase).toBe('ended');
     expect(state1.finalRanking).not.toBeNull();
     expect(state1.finalRanking).toHaveLength(4);
     expect(state1.roundNumber).toBeGreaterThanOrEqual(4);
@@ -134,7 +137,7 @@ describe("full-game integration", () => {
     // ── Determinism: same seed must produce identical result ────
     const state2 = runFullGame(100);
 
-    expect(state2.phase).toBe("ended");
+    expect(state2.phase).toBe('ended');
     expect(state2.finalRanking).toEqual(state1.finalRanking);
     expect(state2.roundNumber).toBe(state1.roundNumber);
     for (let i = 0; i < 4; i++) {
@@ -144,7 +147,7 @@ describe("full-game integration", () => {
     // ── Second game: seed 500 (different seed) ──────────────────
     const state3 = runFullGame(500);
 
-    expect(state3.phase).toBe("ended");
+    expect(state3.phase).toBe('ended');
     expect(state3.finalRanking).not.toBeNull();
     expect(state3.finalRanking).toHaveLength(4);
     expect(state3.roundNumber).toBeGreaterThanOrEqual(4);
