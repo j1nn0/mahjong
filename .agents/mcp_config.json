@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "codegraph": {
+      "command": "codegraph",
+      "args": [
+        "serve",
+        "--mcp"
+      ]
+    },
+    "serena": {
+      "command": "serena",
+      "args": [
+        "start-mcp-server",
+        "--project-from-cwd",
+        "--context",
+        "ide"
+      ]
+    },
+    "context-mode": {
+      "command": "context-mode"
+    }
+  }
+}
