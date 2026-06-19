@@ -185,9 +185,9 @@
 
 受け入れ条件:
 
-- [ ] `detectYaku` が `YakuResult.han` に門前/鳴きの翻数を正しくセットする
-- [ ] `totalHan` が `y.han` を合算するように変更する
-- [ ] 食い下がり役（混一色・混全帯么九・一気通㚢・三色同順・純全帯么九・清一色）の鳴き手備穏で正しい翻数が得られることを回帰テストで確認する
+- [x] `detectYaku` が `YakuResult.han` に門前/鳴きの翻数を正しくセットする
+- [x] `totalHan` が `y.han` を合算するように変更する
+- [x] 食い下がり役（混一色・混全帯么九・一気通㚢・三色同順・純全帯么九・清一色）の鳴き手備穏で正しい翻数が得られることを回帰テストで確認する
 
 想定変更ファイル:
 
@@ -201,13 +201,13 @@
 
 受け入れ条件:
 
-- [ ] `YakuId.Tenhou` / `YakuId.Chiihou` を追加する
-- [ ] 配牌直後に天和を判定する（`playing` フェーズ移行前）
-- [ ] 天和成立時は `finishRound()` を直接呼び出して局を終わらせる
-- [ ] 地和の判定パラメータ `isTenhou` / `isChiihou` を `fullScore()` に追加する
-- [ ] 鳴き発生時に `firstTurnInterrupted = true` をセットする（地和無効化）
-- [ ] 天和・地和は他の役満と複合しない
-- [ ] 回帰テストを追加する
+- [x] `YakuId.Tenhou` / `YakuId.Chiihou` を追加する
+- [x] 配牌直後に天和を判定する（`playing` フェーズ移行前）
+- [x] 天和成立時は `finishRound()` を直接呼び出して局を終わらせる
+- [x] 地和の判定パラメータ `isTenhou` / `isChiihou` を `fullScore()` に追加する
+- [x] 鳴き発生時に `firstTurnInterrupted = true` をセットする（地和無効化）
+- [x] 天和・地和は他の役満と複合しない
+- [x] 回帰テストを追加する
 
 想定変更ファイル:
 
@@ -219,7 +219,7 @@
 
 ### Phase 9: 最終検証
 
-- [ ] `rtk pnpm test`
-- [ ] `rtk pnpm exec tsc --noEmit`
-- [ ] README と `CONTEXT.md` のスコープが実装状態と一致している
-- [ ] `PLAN.md` の進捗を更新する
+- [x] `rtk pnpm test`
+- [x] `rtk pnpm exec tsc --noEmit`
+- [x] README と `CONTEXT.md` のスコープが実装状態と一致している
+- [x] `PLAN.md` の進捗を更新する
