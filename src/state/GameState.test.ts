@@ -665,6 +665,29 @@ describe("abortive draws", () => {
     expect(action).toEqual({ type: "PASS_CLAIM" });
   });
 
+  it("processAiTurn passes an unscorable ron claim", () => {
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([m(1), m(2), m(3), p(2), p(3), p(4), s(4), s(5), s(6), m(7), m(9), ton(), ton()]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(8), player: 1 },
+      claimOptions: collectClaims(m(8), 1, players),
+    });
+
+    const { action } = processAiTurn(state);
+    const afterAction = gameReducer(state, action ?? { type: "PASS_CLAIM" });
+
+    expect(action).toEqual({ type: "PASS_CLAIM" });
+    expect(afterAction.phase).toBe("playing");
+    expect(afterAction.claimOptions).toEqual([]);
+  });
+
   it("processAiTurn claims a tanyao-aiming pon", () => {
     const players = makePlayers(
       makeTestPlayer([]),
@@ -1053,6 +1076,38 @@ describe("gameReducer claims", () => {
     expect(afterDiscard.phase).toBe("claiming");
     expect(afterDiscard.claimOptions[0]?.type).toBe("ron");
     expect(afterDiscard.claimOptions[0]?.player).toBe(0);
+  });
+
+  it("does not enter claiming phase for an unscorable human ron shape", () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([
+          m(1),
+          m(2),
+          m(3),
+          p(2),
+          p(3),
+          p(4),
+          s(4),
+          s(5),
+          s(6),
+          m(7),
+          m(9),
+          ton(),
+          ton(),
+        ]),
+        makeTestPlayer([m(8)]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterDiscard = gameReducer(state, { type: "DISCARD", player: 1, tile: m(8) });
+
+    expect(afterDiscard.phase).toBe("playing");
+    expect(afterDiscard.claimOptions).toEqual([]);
+    expect(afterDiscard.currentPlayer).toBe(2);
   });
 
   it("processes a human ron claim from claiming phase", () => {
@@ -2020,6 +2075,57 @@ describe("riichi and win flags", () => {
 
     expect(afterRiichi.players[0].riichi).toBe(false);
     expect(afterRiichi.riichiSticks).toBe(state.riichiSticks);
+  });
+
+  it("does not enter claiming phase for an unscorable ron shape after riichi declaration", () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([
+          m(1),
+          m(2),
+          m(3),
+          p(2),
+          p(3),
+          p(4),
+          s(4),
+          s(5),
+          s(6),
+          m(7),
+          m(9),
+          ton(),
+          ton(),
+        ]),
+        makeTestPlayer([
+          p(2),
+          p(3),
+          p(4),
+          s(2),
+          s(3),
+          s(4),
+          m(5),
+          m(6),
+          m(7),
+          p(7),
+          p(8),
+          p(9),
+          m(8),
+          ton(),
+        ]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterRiichi = gameReducer(state, {
+      type: "DECLARE_RIICHI",
+      player: 1,
+      discardTile: m(8),
+    });
+
+    expect(afterRiichi.phase).toBe("playing");
+    expect(afterRiichi.claimOptions).toEqual([]);
+    expect(afterRiichi.currentPlayer).toBe(2);
   });
 
   it("allows ANKAN during riichi if wait does not change", () => {

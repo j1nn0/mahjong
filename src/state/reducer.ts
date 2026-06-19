@@ -48,6 +48,25 @@ import {
 
 // ── Reducer ────────────────────────────────────────────────────────
 
+function scoreableClaimsForDiscard(
+  state: GameState,
+  players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
+  tile: Tile,
+  discarder: number,
+  overrides: Partial<GameState> = {},
+) {
+  const claimState = {
+    ...state,
+    ...overrides,
+    players,
+    lastDiscard: { tile, player: discarder },
+    lastDiscardWasChankan: false,
+  };
+  return collectClaims(tile, discarder, players).filter(
+    (claim) => claim.type !== "ron" || ronScore(claimState, claim.player) !== null,
+  );
+}
+
 export function gameReducer(state: GameState, action: GameAction): GameState {
   switch (action.type) {
     case "RESTORE":
@@ -154,7 +173,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       });
       const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
       // Check claims
-      const claims = collectClaims(action.tile, action.player, newPlayers);
+      const claims = scoreableClaimsForDiscard(state, newPlayers, action.tile, action.player);
       const sorted = sortClaimsByPriority(claims, action.player);
       let nextDeadWall = state.deadWall;
       let nextPendingKanDora = state.pendingKanDora;
@@ -597,7 +616,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }),
       );
       const nextRiichiSticks = state.riichiSticks + 1;
-      const claims = collectClaims(action.discardTile, action.player, newPlayers);
+      const claims = scoreableClaimsForDiscard(
+        state,
+        newPlayers,
+        action.discardTile,
+        action.player,
+        { riichiSticks: nextRiichiSticks },
+      );
       const sorted = sortClaimsByPriority(claims, action.player);
       const allRiichi = newPlayers.every((p) => p.riichi);
       const ronClaims = sorted.filter((claim) => claim.type === "ron");

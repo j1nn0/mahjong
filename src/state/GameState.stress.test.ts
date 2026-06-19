@@ -6,6 +6,7 @@ import {
   processAiTurn,
 } from './GameState.js';
 import type { GameState } from './GameState.js';
+import { isValidFinalRanking, progressionInvariantErrors } from './invariants.js';
 
 function mulberry32(seed: number): () => number {
   let s = seed | 0;
@@ -15,17 +16,6 @@ function mulberry32(seed: number): () => number {
     t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
-}
-
-function pointsTotal(state: GameState): number {
-  return state.players.reduce((sum, p) => sum + p.points, 0) + state.riichiSticks * 1000;
-}
-
-function expectValidFinalRanking(state: GameState): void {
-  expect(state.finalRanking).not.toBeNull();
-  expect(state.finalRanking).toHaveLength(4);
-  expect(new Set(state.finalRanking ?? []).size).toBe(4);
-  expect([...(state.finalRanking ?? [])].sort()).toEqual([0, 1, 2, 3]);
 }
 
 function runSeededFullGame(seed: number, maxIterations = 5000): GameState {
@@ -52,10 +42,7 @@ function runSeededFullGame(seed: number, maxIterations = 5000): GameState {
         state = gameReducer(state, { type: 'PASS_CLAIM' });
       } else {
         const { action } = processAiTurn(state);
-        const nextState = gameReducer(state, action ?? { type: 'PASS_CLAIM' });
-        state = nextState.phase === 'claiming'
-          ? gameReducer(state, { type: 'PASS_CLAIM' })
-          : nextState;
+        state = gameReducer(state, action ?? { type: 'PASS_CLAIM' });
       }
     } else if (state.phase === 'roundEnded') {
       consecutiveClaims = 0;
@@ -72,7 +59,7 @@ function runSeededFullGame(seed: number, maxIterations = 5000): GameState {
       throw new Error(`Unexpected phase ${state.phase} at iteration ${iterations} (seed ${seed})`);
     }
 
-    expect(pointsTotal(state)).toBe(100000);
+    expect(progressionInvariantErrors(state)).toEqual([]);
     iterations++;
   }
 
@@ -95,8 +82,8 @@ describe('full-game stress', () => {
         const state = runSeededFullGame(seed);
 
         expect(state.phase).toBe('ended');
-        expectValidFinalRanking(state);
-        expect(pointsTotal(state)).toBe(100000);
+        expect(isValidFinalRanking(state)).toBe(true);
+        expect(progressionInvariantErrors(state)).toEqual([]);
       }
     },
   );

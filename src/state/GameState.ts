@@ -25,6 +25,7 @@ import {
   applyTsumoPayment,
   finishRound,
   canScoreTsumo,
+  ronScore,
 } from "./finishRound.js";
 import { chiKuikaeProhibitedTiles } from "./claimPhase.js";
 
@@ -394,7 +395,8 @@ export function processAiTurn(state: GameState): {
     }
     const aiClaims = state.claimOptions.filter((c) => c.player !== 0);
     const claim = aiClaims.find((c) => {
-      if (c.type === "ron" || c.type === "daiminkan") return true;
+      if (c.type === "ron") return ronScore(state, c.player) !== null;
+      if (c.type === "daiminkan") return true;
       const simulated = simulateMeldClaim(state.players[c.player], c as MeldClaimOption);
       if (!canDiscardAfterMeldClaim(c as MeldClaimOption, simulated)) return false;
       return isMeldTanyaoAiming(c as MeldClaimOption) || isMeldTenpaiMaking(simulated);

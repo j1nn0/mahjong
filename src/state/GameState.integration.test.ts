@@ -5,24 +5,10 @@ import {
   processAiTurn,
 } from './GameState.js';
 import type { GameState } from './GameState.js';
-
-// ── Points total helper ───────────────────────────────────────────
-
-function pointsTotal(state: GameState): number {
-  return state.players.reduce((sum, p) => sum + p.points, 0) + state.riichiSticks * 1000;
-}
-
-function expectValidFinalRanking(state: GameState): void {
-  expect(state.finalRanking).not.toBeNull();
-  expect(state.finalRanking).toHaveLength(4);
-  expect(new Set(state.finalRanking ?? []).size).toBe(4);
-  expect([...(state.finalRanking ?? [])].sort()).toEqual([0, 1, 2, 3]);
-}
+import { isValidFinalRanking, progressionInvariantErrors } from './invariants.js';
 
 function expectProgressionInvariants(state: GameState): void {
-  expect(pointsTotal(state)).toBe(100000);
-  expect(state.roundNumber).toBeGreaterThanOrEqual(1);
-  expect(state.roundNumber).toBeLessThanOrEqual(5);
+  expect(progressionInvariantErrors(state)).toEqual([]);
 }
 
 // ── Full game runner ──────────────────────────────────────────────
@@ -58,15 +44,7 @@ function runFullGame(dealerRoll: number, maxIterations = 2000): GameState {
         state = gameReducer(state, { type: 'PASS_CLAIM' });
       } else {
         const { action } = processAiTurn(state);
-        let newState = gameReducer(state, action ?? { type: 'PASS_CLAIM' });
-
-        // If the action didn't resolve claiming (e.g. scoring returns null
-        // for a detected winning hand), fall back to pass to avoid an
-        // infinite claiming loop.
-        if (newState.phase === 'claiming') {
-          newState = gameReducer(state, { type: 'PASS_CLAIM' });
-        }
-        state = newState;
+        state = gameReducer(state, action ?? { type: 'PASS_CLAIM' });
       }
     } else if (state.phase === 'roundEnded') {
       consecutiveClaims = 0;
@@ -99,7 +77,7 @@ describe('full-game integration', () => {
       const state = runFullGame(dealerRoll);
 
       expect(state.phase).toBe('ended');
-      expectValidFinalRanking(state);
+      expect(isValidFinalRanking(state)).toBe(true);
       expectProgressionInvariants(state);
       if (state.roundNumber < 4) {
         expect(state.players.some((p) => p.points < 0)).toBe(true);
