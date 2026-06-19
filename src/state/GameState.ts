@@ -76,6 +76,7 @@ export interface GameState {
     firstTurnInterrupted: boolean;
     pendingAbortiveDraw: AbortiveDrawReason | null;
     calledDiscardKinds: readonly (readonly string[])[];
+    pendingKanDora?: boolean;
 }
 // ── Actions ────────────────────────────────────────────────────────
 export type GameAction = {
@@ -989,14 +990,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             // Check claims
             const claims = collectClaims(action.tile, action.player, newPlayers);
             const sorted = sortClaimsByPriority(claims, action.player);
+            let nextDeadWall = state.deadWall;
+            let nextPendingKanDora = state.pendingKanDora;
             if (state.pendingAbortiveDraw === "suukanSanra") {
                 const ronClaims = sorted.filter((claim) => claim.type === "ron");
                 if (ronClaims.length === 0) {
                     return finishAbortiveDraw({ ...state, players: newPlayers, lastDiscard: { tile: action.tile, player: action.player } }, "suukanSanra");
                 }
+                if (state.pendingKanDora && ronClaims.length === 0) {
+                    nextDeadWall = revealKanDora(state.deadWall);
+                    nextPendingKanDora = false;
+                }
                 return {
                     ...state,
                     players: newPlayers,
+                    deadWall: nextDeadWall,
+                    pendingKanDora: nextPendingKanDora,
                     lastDiscard: { tile: action.tile, player: action.player },
                     lastDiscardWasChankan: false,
                     claimOptions: ronClaims,
@@ -1006,9 +1015,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 };
             }
             if (sorted.length > 0) {
+                const ronClaims = sorted.filter((claim) => claim.type === "ron");
+                if (state.pendingKanDora && ronClaims.length === 0) {
+                    nextDeadWall = revealKanDora(state.deadWall);
+                    nextPendingKanDora = false;
+                }
                 return {
                     ...state,
                     players: newPlayers,
+                    deadWall: nextDeadWall,
+                    pendingKanDora: nextPendingKanDora,
                     lastDiscard: { tile: action.tile, player: action.player },
                     lastDiscardWasChankan: false,
                     claimOptions: sorted,
@@ -1017,12 +1033,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     message: `${tileStr} を切りました。`,
                 };
             }
+            if (state.pendingKanDora) {
+                nextDeadWall = revealKanDora(state.deadWall);
+                nextPendingKanDora = false;
+            }
             if (isSuufonRenda(newPlayers, state.firstTurnInterrupted)) {
-                return finishAbortiveDraw({ ...state, players: newPlayers, lastDiscard: { tile: action.tile, player: action.player } }, "suufonRenda");
+                return finishAbortiveDraw({
+                    ...state,
+                    players: newPlayers,
+                    deadWall: nextDeadWall,
+                    pendingKanDora: nextPendingKanDora,
+                    lastDiscard: { tile: action.tile, player: action.player }
+                }, "suufonRenda");
             }
             return {
                 ...state,
                 players: newPlayers,
+                deadWall: nextDeadWall,
+                pendingKanDora: nextPendingKanDora,
                 lastDiscard: { tile: action.tile, player: action.player },
                 lastDiscardWasChankan: false,
                 currentPlayer: (action.player + 1) % 4,
@@ -1057,9 +1085,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const calledDiscardKinds = state.lastDiscard
                 ? state.calledDiscardKinds.map((kinds, i) => i === state.lastDiscard!.player ? [...kinds, tileKindKey(state.lastDiscard!.tile)] : kinds)
                 : state.calledDiscardKinds;
+            let nextDeadWall = state.deadWall;
+            let nextPendingKanDora = state.pendingKanDora;
+            if (state.pendingKanDora) {
+                nextDeadWall = revealKanDora(state.deadWall);
+                nextPendingKanDora = false;
+            }
             return {
                 ...state,
                 players: newPlayers,
+                deadWall: nextDeadWall,
+                pendingKanDora: nextPendingKanDora,
                 currentPlayer: option.player,
                 phase: "playing",
                 claimOptions: [],
@@ -1095,9 +1131,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const calledDiscardKinds = state.lastDiscard
                 ? state.calledDiscardKinds.map((kinds, i) => i === state.lastDiscard!.player ? [...kinds, tileKindKey(state.lastDiscard!.tile)] : kinds)
                 : state.calledDiscardKinds;
+            let nextDeadWall = state.deadWall;
+            let nextPendingKanDora = state.pendingKanDora;
+            if (state.pendingKanDora) {
+                nextDeadWall = revealKanDora(state.deadWall);
+                nextPendingKanDora = false;
+            }
             return {
                 ...state,
                 players: newPlayers,
+                deadWall: nextDeadWall,
+                pendingKanDora: nextPendingKanDora,
                 currentPlayer: option.player,
                 phase: "playing",
                 claimOptions: [],
@@ -1133,10 +1177,15 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const calledDiscardKinds = state.lastDiscard
                 ? state.calledDiscardKinds.map((kinds, i) => i === state.lastDiscard!.player ? [...kinds, tileKindKey(state.lastDiscard!.tile)] : kinds)
                 : state.calledDiscardKinds;
+            let nextDeadWall = state.deadWall;
+            if (state.pendingKanDora) {
+                nextDeadWall = revealKanDora(state.deadWall);
+            }
             return {
                 ...state,
                 players: newPlayers,
-                deadWall: revealKanDora(state.deadWall),
+                deadWall: nextDeadWall,
+                pendingKanDora: true,
                 currentPlayer: option.player,
                 phase: "playing",
                 claimOptions: [],
@@ -1204,11 +1253,16 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const newPlayers = clearIppatsu(updatePlayerInTuple(state.players, action.player, updatedPlayer));
             const ronClaims = sortClaimsByPriority(collectClaims(action.tile, action.player, newPlayers), action.player)
                 .filter((claim) => claim.type === "ron");
+            let nextDeadWall = state.deadWall;
+            if (state.pendingKanDora) {
+                nextDeadWall = revealKanDora(state.deadWall);
+            }
             if (ronClaims.length > 0) {
                 return {
                     ...state,
                     players: newPlayers,
-                    deadWall: revealKanDora(state.deadWall),
+                    deadWall: nextDeadWall,
+                    pendingKanDora: true,
                     currentPlayer: action.player,
                     lastDiscard: { tile: action.tile, player: action.player },
                     lastDiscardWasChankan: true,
@@ -1223,7 +1277,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             return {
                 ...state,
                 players: newPlayers,
-                deadWall: revealKanDora(state.deadWall),
+                deadWall: nextDeadWall,
+                pendingKanDora: true,
                 currentPlayer: action.player,
                 phase: "playing",
                 claimOptions: [],
@@ -1250,9 +1305,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 PlayerData,
                 PlayerData
             ];
+            let nextDeadWall = state.deadWall;
+            let nextPendingKanDora = state.pendingKanDora;
+            if (state.pendingKanDora) {
+                nextDeadWall = revealKanDora(state.deadWall);
+                nextPendingKanDora = false;
+            }
             return {
                 ...state,
                 players,
+                deadWall: nextDeadWall,
+                pendingKanDora: nextPendingKanDora,
                 phase: "playing",
                 claimOptions: [],
                 currentPlayer: state.lastDiscardWasChankan ? discarder : (discarder + 1) % 4,
@@ -1290,12 +1353,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const claims = collectClaims(action.discardTile, action.player, newPlayers);
             const sorted = sortClaimsByPriority(claims, action.player);
             const allRiichi = newPlayers.every((p) => p.riichi);
+            const ronClaims = sorted.filter((claim) => claim.type === "ron");
+            let nextDeadWall = state.deadWall;
+            let nextPendingKanDora = state.pendingKanDora;
+            if (state.pendingKanDora && ronClaims.length === 0) {
+                nextDeadWall = revealKanDora(state.deadWall);
+                nextPendingKanDora = false;
+            }
             if (allRiichi) {
-                const ronClaims = sorted.filter((claim) => claim.type === "ron");
-                if (ronClaims.length === 0) {
+                const ronClaimsForRiichi = sorted.filter((claim) => claim.type === "ron");
+                if (ronClaimsForRiichi.length === 0) {
                     return finishAbortiveDraw({
                         ...state,
                         players: newPlayers,
+                        deadWall: nextDeadWall,
+                        pendingKanDora: nextPendingKanDora,
                         riichiSticks: nextRiichiSticks,
                         lastDiscard: { tile: action.discardTile, player: action.player },
                     }, "suuchaRiichi");
@@ -1303,11 +1375,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 return {
                     ...state,
                     players: newPlayers,
+                    deadWall: nextDeadWall,
+                    pendingKanDora: nextPendingKanDora,
                     riichiSticks: nextRiichiSticks,
                     lastDiscard: { tile: action.discardTile, player: action.player },
                     lastDiscardWasChankan: false,
                     phase: "claiming",
-                    claimOptions: ronClaims,
+                    claimOptions: ronClaimsForRiichi,
                     currentPlayer: (action.player + 1) % 4,
                     kuikaeProhibitedTiles: [],
                     pendingAbortiveDraw: "suuchaRiichi",
@@ -1318,6 +1392,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 return {
                     ...state,
                     players: newPlayers,
+                    deadWall: nextDeadWall,
+                    pendingKanDora: nextPendingKanDora,
                     riichiSticks: nextRiichiSticks,
                     lastDiscard: { tile: action.discardTile, player: action.player },
                     lastDiscardWasChankan: false,
@@ -1332,6 +1408,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 return finishAbortiveDraw({
                     ...state,
                     players: newPlayers,
+                    deadWall: nextDeadWall,
+                    pendingKanDora: nextPendingKanDora,
                     riichiSticks: nextRiichiSticks,
                     lastDiscard: { tile: action.discardTile, player: action.player },
                 }, "suufonRenda");
@@ -1339,6 +1417,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             return {
                 ...state,
                 players: newPlayers,
+                deadWall: nextDeadWall,
+                pendingKanDora: nextPendingKanDora,
                 riichiSticks: nextRiichiSticks,
                 lastDiscard: { tile: action.discardTile, player: action.player },
                 lastDiscardWasChankan: false,
@@ -1478,6 +1558,7 @@ export function createInitialState(random?: (() => number) | null): GameState {
         firstTurnInterrupted: false,
         pendingAbortiveDraw: null,
         calledDiscardKinds: emptyCalledDiscardKinds(),
+        pendingKanDora: false,
     };
 }
 function isRecord(value: unknown): value is Record<string, unknown> {

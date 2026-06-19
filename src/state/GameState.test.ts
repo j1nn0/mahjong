@@ -879,7 +879,8 @@ describe("gameReducer claims", () => {
     expect(afterKan.players[0].melds).toHaveLength(1);
     expect(afterKan.players[0].melds[0]?.type).toBe(MeldType.AddedKan);
     expect(afterKan.players[0].melds[0]?.tiles).toHaveLength(4);
-    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount + 1);
+    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount);
+    expect(afterKan.pendingKanDora).toBe(true);
   });
 
   it("does not allow kakan while in riichi", () => {
@@ -1231,7 +1232,8 @@ describe("claiming turn ownership", () => {
     expect(afterKan.currentPlayer).toBe(0);
     expect(afterKan.players[0].melds).toHaveLength(1);
     expect(afterKan.players[2].melds).toHaveLength(0);
-    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount + 1);
+    expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount);
+    expect(afterKan.pendingKanDora).toBe(true);
   });
 });
 
@@ -1323,7 +1325,8 @@ describe("rinshan draw after kan", () => {
     const afterKan = gameReducer(state, { type: "DAIMINKAN", player: 2 });
 
     expect(afterKan.pendingRinshan).toBe(true);
-    expect(afterKan.deadWall.doraCount).toBe(2);
+    expect(afterKan.deadWall.doraCount).toBe(1);
+    expect(afterKan.pendingKanDora).toBe(true);
     expect(afterKan.currentPlayer).toBe(2);
 
     const afterDraw = gameReducer(afterKan, { type: "DRAW", player: 2 });
@@ -1356,7 +1359,8 @@ describe("rinshan draw after kan", () => {
     const afterKan = gameReducer(state, { type: "KAKAN", player: 0, tile: m(2) });
 
     expect(afterKan.pendingRinshan).toBe(true);
-    expect(afterKan.deadWall.doraCount).toBe(2);
+    expect(afterKan.deadWall.doraCount).toBe(1);
+    expect(afterKan.pendingKanDora).toBe(true);
     expect(afterKan.currentPlayer).toBe(0);
 
     const afterDraw = gameReducer(afterKan, { type: "DRAW", player: 0 });
