@@ -131,7 +131,7 @@ describe('aiChooseDiscard', () => {
     const hand = [
       m(1), m(9), p(1),
       p(9), s(1), s(9),
-      nan(), { suit: Suit.Wind, value: Wind.Pei, red: false },
+      nan(), { suit: Suit.Wind, value: Wind.Pei } as Tile,
       m(2), m(3), m(4), m(5), m(6), m(7),
     ].slice(0, 14);
     const discards: readonly (readonly Tile[])[] = [[], [nan()], [], []];
@@ -143,6 +143,6 @@ describe('aiChooseDiscard', () => {
     // Middle tiles -> score 5 or more
     // Terminals -> score 10
     // So Pei has lowest score (0) and should be discarded first
-    expect(chosen).toEqual({ suit: Suit.Wind, value: Wind.Pei, red: false });
+    expect(chosen).toEqual({ suit: Suit.Wind, value: Wind.Pei } as Tile);
   });
 });
