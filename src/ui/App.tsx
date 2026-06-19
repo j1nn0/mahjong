@@ -476,10 +476,12 @@ const App: React.FC = () => {
       if (input === "c") {
         const chiOpts = humanOptions.filter((o) => o.type === "chi");
         if (chiOpts.length > 0) {
+          const selectedOpt = humanOptions[claimSelectedIndex];
+          const chosenChi = selectedOpt && selectedOpt.type === "chi" ? selectedOpt : chiOpts[0]!;
           dispatch({
             type: "CHI",
             player: 0,
-            optionIndex: state.claimOptions.indexOf(chiOpts[0]!),
+            optionIndex: state.claimOptions.indexOf(chosenChi),
           });
           return;
         }
@@ -597,21 +599,21 @@ const App: React.FC = () => {
               <Text bold>-- スコア --</Text>
               <Text>
                 役:{" "}
-                {sr.yaku
-                  .filter((y) => !y.yakuman)
-                  .map((y) => y.name)
-                  .join("・")}
+                {sr.yaku.map((y) => y.name).join("・")}
               </Text>
-              {sr.yakuman > 0 && (
+              {sr.yakuman > 0 ? (
                 <Text color="red" bold>
-                  役満 ×{sr.yakuman}
+                  {sr.yakuman === 1 ? "役満" : sr.yakuman === 2 ? "ダブル役満" : `役満 ×${sr.yakuman}`}
                 </Text>
+              ) : (
+                <>
+                  <Text>
+                    飜: {sr.han - sr.doraHan} (役) + {sr.doraHan} (ドラ) = {sr.han}
+                  </Text>
+                  <Text>符: {sr.fu}</Text>
+                  {sr.limit !== "none" && sr.limit !== "yakuman" && <Text>満貫区分: {sr.limit}</Text>}
+                </>
               )}
-              <Text>
-                飜: {sr.han - sr.doraHan} (役) + {sr.doraHan} (ドラ) = {sr.han}
-              </Text>
-              <Text>符: {sr.fu}</Text>
-              {sr.limit !== "none" && sr.limit !== "yakuman" && <Text>満貫区分: {sr.limit}</Text>}
               <Text>
                 支払い: {sr.payment.from.map((f) => `P${f.player + 1}: ${f.amount}点`).join(", ")}
               </Text>

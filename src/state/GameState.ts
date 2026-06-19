@@ -877,6 +877,18 @@ export function processAiTurn(state: GameState): {
         if (canScoreTsumo(state, state.currentPlayer, winTile)) {
             return { state, action: { type: "TSUMO", player: state.currentPlayer } };
         }
+        if (!player.riichi) {
+            for (const tile of player.hand) {
+                if (player.hand.filter((t) => isSameTileKind(t, tile)).length >= 4) {
+                    return { state, action: { type: "ANKAN", player: state.currentPlayer, tile } };
+                }
+            }
+            for (const tile of player.hand) {
+                if (player.melds.some((m) => m.type === MeldType.Poon && isSameTileKind(m.calledTile, tile))) {
+                    return { state, action: { type: "KAKAN", player: state.currentPlayer, tile } };
+                }
+            }
+        }
         const discard = player.riichi && state.lastDrawnTile
             ? state.lastDrawnTile
             : aiChooseDiscard(player.hand, state.players.map((p) => p.discards), state.players.map((p) => p.riichi), state.kuikaeProhibitedTiles);

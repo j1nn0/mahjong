@@ -153,6 +153,24 @@ describe("collectClaims", () => {
     expect(claims.some((c) => c.type === "chi" && c.player === 1)).toBe(true);
   });
 
+  it("detects multiple chi options when possible", () => {
+    // Player 0 discards m5, Player 1 has m3,m4,m6,m7 -> can chi 345, 456, 567
+    const players = makePlayers(
+      makeTestPlayer([m(5)]),
+      makeTestPlayer([m(3), m(4), m(6), m(7), p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const claims = collectClaims(m(5), 0, players);
+    const chiClaims = claims.filter((c) => c.type === "chi" && c.player === 1);
+    expect(chiClaims).toHaveLength(3);
+    // verify the tiles in the options
+    const combos = chiClaims.map(c => c.tiles.map(t => t.value).sort().join(""));
+    expect(combos).toContain("345");
+    expect(combos).toContain("456");
+    expect(combos).toContain("567");
+  });
+
   it("does not detect chi for non-adjacent player", () => {
     // Player 0 discards m5, Player 2 is NOT next (player 1 is)
     const players = makePlayers(
@@ -253,6 +271,63 @@ describe("abortive draws", () => {
     const { action } = processAiTurn(state);
 
     expect(action).toEqual({ type: "DECLARE_KYUUSHU_KYUUHAI", player: 1 });
+  });
+
+  it("processAiTurn declares ankan for computer players", () => {
+    const hand = [
+      m(1), m(1), m(1), m(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), s(1), s(2),
+    ];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer(hand),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "ANKAN", player: 1, tile: m(1) });
+  });
+
+  it("processAiTurn declares kakan for computer players", () => {
+    // 11 tiles in hand + 1 pon meld (3 tiles) = 14 total tiles (readyDiscard state)
+    const hand = [m(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), s(1), s(2)];
+    const ponMeld: Meld = { type: MeldType.Poon, tiles: [m(1), m(1), m(1)], calledTile: m(1) };
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(hand), melds: [ponMeld] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "KAKAN", player: 1, tile: m(1) });
+  });
+
+  it("processAiTurn does not declare ankan if in riichi", () => {
+    const hand = [
+      m(1), m(1), m(1), m(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), s(1), s(2),
+    ];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(hand), riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action?.type).not.toBe("ANKAN");
   });
 
   it("ends the round on suufon renda after the fourth matching wind discard", () => {
