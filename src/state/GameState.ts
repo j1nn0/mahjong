@@ -407,16 +407,7 @@ export function dealRound(state: GameState, dealer: number, roundNumber: number,
             isChiihou: false,
         });
         if (score) {
-            const nextPlayers = [...players] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
-            const payment = score.payment;
-            for (const p of payment.from) {
-                nextPlayers[p.player] = updPlayer(nextPlayers[p.player], {
-                    points: nextPlayers[p.player].points - p.amount,
-                });
-            }
-            nextPlayers[dealer] = updPlayer(nextPlayers[dealer], {
-                points: nextPlayers[dealer].points + payment.winnerGets,
-            });
+            const nextPlayers = applyTsumoPayment(players, dealer, score);
             return finishRound(initialState, nextPlayers, dealer, false, true, score, "天和！");
         }
     }
