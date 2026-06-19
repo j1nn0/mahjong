@@ -142,11 +142,15 @@ export function aiChooseDiscard(
   }
 
   // テンパイできない: 孤立牌優先（スコア最低の牌）
-  return fallbackIsolated(hand, prohibitedTiles);
+  return fallbackIsolated(hand, opponentDiscards, prohibitedTiles);
 }
 
 /** 孤立牌優先のfallback */
-function fallbackIsolated(hand: readonly Tile[], prohibitedTiles: readonly Tile[] = []): Tile {
+function fallbackIsolated(
+  hand: readonly Tile[],
+  opponentDiscards: readonly (readonly Tile[])[],
+  prohibitedTiles: readonly Tile[] = []
+): Tile {
   const legal = hand.filter(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value));
   const sorted = sortHand(legal.length > 0 ? legal : [...hand]);
   const counts = new Map<string, number>();
@@ -155,14 +159,27 @@ function fallbackIsolated(hand: readonly Tile[], prohibitedTiles: readonly Tile[
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
 
+  const allDiscards = new Set<string>();
+  for (const discards of opponentDiscards) {
+    for (const d of discards) {
+      allDiscards.add(`${d.suit}:${d.value}`);
+    }
+  }
+
   function score(tile: Tile): number {
     const key = `${tile.suit}:${tile.value}`;
     const count = counts.get(key) ?? 0;
     if (count >= 2) return 50;
-    if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) return 0;
+    
+    if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) {
+      if (allDiscards.has(key)) {
+        return 60; // 既に捨てられている字牌（安全牌）は残す
+      }
+      return 0; // まだ捨てられていない字牌は不要
+    }
 
     const idx = tileToIndex(tile);
-    let s = 10;
+    let s = (tile.value === 1 || tile.value === 9) ? 10 : 5; // 中張牌(2-8)は序盤に処理するためスコアを低くする
     if (idx % 9 > 0 && sorted.some(t => tileToIndex(t) === idx - 1)) s += 15;
     if (idx % 9 < 8 && sorted.some(t => tileToIndex(t) === idx + 1)) s += 15;
     if (idx % 9 > 1 && sorted.some(t => tileToIndex(t) === idx - 2)) s += 5;

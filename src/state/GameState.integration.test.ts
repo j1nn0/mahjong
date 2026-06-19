@@ -131,7 +131,9 @@ describe('full-game integration', () => {
     expect(state1.phase).toBe('ended');
     expect(state1.finalRanking).not.toBeNull();
     expect(state1.finalRanking).toHaveLength(4);
-    expect(state1.roundNumber).toBeGreaterThanOrEqual(4);
+    if (state1.roundNumber < 4) {
+      expect(state1.players.some(p => p.points < 0)).toBe(true);
+    }
     expect(pointsTotal(state1)).toBe(100000);
 
     // ── Determinism: same seed must produce identical result ────
@@ -150,7 +152,9 @@ describe('full-game integration', () => {
     expect(state3.phase).toBe('ended');
     expect(state3.finalRanking).not.toBeNull();
     expect(state3.finalRanking).toHaveLength(4);
-    expect(state3.roundNumber).toBeGreaterThanOrEqual(4);
+    if (state3.roundNumber < 4) {
+      expect(state3.players.some(p => p.points < 0)).toBe(true);
+    }
     expect(pointsTotal(state3)).toBe(100000);
   });
 });

@@ -110,4 +110,39 @@ describe('aiChooseDiscard', () => {
 
     expect(chosen.suit).not.toBe(Suit.Pin);
   });
+
+  it('discards middle tiles (2-8) before terminals (1,9) when not in tenpai', () => {
+    // Hand without tenpai: isolated tiles
+    const hand = [
+      m(1), m(5), m(9),
+      p(1), p(5), p(9),
+      s(1), s(5), s(9),
+      nan(), nan(),
+      nan(), nan(), nan(), // Just fill up 14 tiles
+    ].slice(0, 14);
+    const discards: readonly (readonly Tile[])[] = [[], [], [], []];
+    const riichi: readonly boolean[] = [false, false, false, false];
+    
+    const chosen = aiChooseDiscard(hand, discards, riichi);
+    expect([m(5), p(5), s(5)]).toContainEqual(chosen);
+  });
+
+  it('prefers to keep already-discarded honor tiles for safety when not in tenpai', () => {
+    const hand = [
+      m(1), m(9), p(1),
+      p(9), s(1), s(9),
+      nan(), { suit: Suit.Wind, value: Wind.Pei, red: false },
+      m(2), m(3), m(4), m(5), m(6), m(7),
+    ].slice(0, 14);
+    const discards: readonly (readonly Tile[])[] = [[], [nan()], [], []];
+    const riichi: readonly boolean[] = [false, false, false, false];
+    
+    const chosen = aiChooseDiscard(hand, discards, riichi);
+    // Pei is not discarded by anyone -> score 0
+    // Nan is discarded -> score 60
+    // Middle tiles -> score 5 or more
+    // Terminals -> score 10
+    // So Pei has lowest score (0) and should be discarded first
+    expect(chosen).toEqual({ suit: Suit.Wind, value: Wind.Pei, red: false });
+  });
 });
