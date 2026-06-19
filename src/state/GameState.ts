@@ -41,6 +41,11 @@ export type AbortiveDrawReason = "kyuushuKyuuhai" | "suufonRenda" | "suuchaRiich
 function isMeldClaimOption(option: ClaimOption, type: MeldClaimOption["type"], player: number): option is MeldClaimOption {
     return option.type === type && option.player === player;
 }
+export interface RoundHistoryItem {
+    roundName: string;
+    resultText: string;
+    pointChanges: readonly number[];
+}
 export interface GameState {
     players: readonly [
         PlayerData,
@@ -77,6 +82,7 @@ export interface GameState {
     pendingAbortiveDraw: AbortiveDrawReason | null;
     calledDiscardKinds: readonly (readonly string[])[];
     pendingKanDora?: boolean;
+    roundHistory: readonly RoundHistoryItem[];
 }
 // ── Actions ────────────────────────────────────────────────────────
 export type GameAction = {
@@ -451,6 +457,16 @@ function finishRound(state: GameState, players: readonly [
         pendingAbortiveDraw: null,
         calledDiscardKinds: emptyCalledDiscardKinds(),
         message,
+        roundHistory: [
+            ...state.roundHistory,
+            {
+                roundName: `${["東", "南", "西", "北"][state.roundWind]}${state.roundNumber}局 ${state.honba}本場`,
+                resultText: score
+                    ? `和了: ${score.yakuman > 0 ? (score.yakuman === 1 ? "役満" : "ダブル役満") : (score.limit && score.limit !== "none" ? {mangan:"満貫",haneman:"跳満",baiman:"倍満",sanbaiman:"三倍満",yakuman:"役満"}[score.limit] : `${score.han}飜${score.fu}符`)}`
+                    : message.split("!")[0] ?? message, // e.g. "流局", "途中流局: 九種九牌"
+                pointChanges: players.map((p, i) => p.points - state.players[i].points),
+            }
+        ],
     };
 }
 function finishAbortiveDraw(state: GameState, reason: AbortiveDrawReason): GameState {
@@ -1564,6 +1580,7 @@ export function createInitialState(random?: (() => number) | null): GameState {
         pendingAbortiveDraw: null,
         calledDiscardKinds: emptyCalledDiscardKinds(),
         pendingKanDora: false,
+        roundHistory: [],
     };
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1614,6 +1631,7 @@ export function normalizeGameState(value: unknown): GameState {
                 ? rawDeadWall.doraCount
                 : base.deadWall.doraCount,
         },
+        roundHistory: Array.isArray(value.roundHistory) ? (value.roundHistory as RoundHistoryItem[]) : base.roundHistory,
         roundWind: typeof value.roundWind === "number" ? value.roundWind : base.roundWind,
         roundNumber: typeof value.roundNumber === "number" ? value.roundNumber : base.roundNumber,
         dealer: typeof value.dealer === "number" ? value.dealer : base.dealer,

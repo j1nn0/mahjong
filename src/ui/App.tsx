@@ -1,5 +1,5 @@
 import React, { useReducer, useEffect, useState, useRef } from "react";
-import { Text, Box, useInput, useStdout } from "ink";
+import { Text, Box, useInput, useStdout, useApp } from "ink";
 import {
   createInitialState,
   gameReducer,
@@ -303,7 +303,8 @@ const App: React.FC = () => {
   const [startupMode, setStartupMode] = useState<"loading" | "choose" | "ready">("loading");
   const [savedState, setSavedState] = useState<GameState | null>(null);
   const { stdout } = useStdout();
-  const terminalWidth = stdout.columns ?? 80;
+  const { exit } = useApp();
+  const terminalWidth = stdout.columns || 80;
 
   useEffect(() => {
     const saved = loadGame<GameState>();
@@ -464,9 +465,11 @@ const App: React.FC = () => {
 
     // Game over screen
     if (state.phase === "ended") {
-      if (input === "q" || input === " ") {
+      if (input === " ") {
         dispatch({ type: "START_GAME" });
         setSelectedIndex(0);
+      } else if (input === "q") {
+        exit();
       }
       return;
     }
@@ -601,6 +604,7 @@ const App: React.FC = () => {
 
   if (state.phase === "ended" || state.phase === "roundEnded") {
     const sr = state.lastScoreResult;
+    const sortedPlayers = state.phase === "ended" && state.finalRanking ? state.finalRanking : [0, 1, 2, 3];
     return (
       <Box flexDirection="column" padding={1}>
         <Text bold>{state.message}</Text>
@@ -642,9 +646,10 @@ const App: React.FC = () => {
           </>
         )}
         <Box marginTop={1}>
-          {[0, 1, 2, 3].map((i) => (
+          {sortedPlayers.map((i, index) => (
             <Box key={i} marginRight={2}>
               <Text>
+                {state.phase === "ended" ? `${index + 1}位: ` : ""}
                 {i === 0 ? "あなた" : `P${i + 1}`}({WIND_NAMES[state.players[i].wind]}家):{" "}
               </Text>
               <Text bold={true} color={i === state.winner ? "yellow" : "white"}>
@@ -653,21 +658,28 @@ const App: React.FC = () => {
             </Box>
           ))}
         </Box>
-        {state.finalRanking && (
+        {state.phase === "ended" && state.roundHistory && state.roundHistory.length > 0 && (
           <Box flexDirection="column" marginTop={1}>
-            <Text bold>最終順位</Text>
-            {state.finalRanking.map((player, index) => (
-              <Text key={player}>
-                {index + 1}位: {player === 0 ? "あなた" : `P${player + 1}`}{" "}
-                {state.players[player].points}点
-              </Text>
+            <Text bold>-- 局履歴 --</Text>
+            {state.roundHistory.map((history, idx) => (
+              <Box key={idx} flexDirection="column" marginBottom={1}>
+                <Text bold>{history.roundName}</Text>
+                <Text>{history.resultText}</Text>
+                <Text dimColor>
+                  {history.pointChanges.map((pt, pIdx) => {
+                    const name = pIdx === 0 ? "あなた" : `P${pIdx + 1}`;
+                    const sign = pt > 0 ? "+" : "";
+                    return `${name}: ${sign}${pt}`;
+                  }).join(" / ")}
+                </Text>
+              </Box>
             ))}
           </Box>
         )}
-        <Text dimColor>
+        <Text dimColor marginTop={1}>
           {state.phase === "roundEnded"
             ? "N / Enter / Space: 次局へ"
-            : "SpaceまたはQで新しいゲーム"}
+            : "[Space] もう一度遊ぶ / [Q] 終了する"}
         </Text>
       </Box>
     );
