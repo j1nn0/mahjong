@@ -15,6 +15,7 @@ import { isWinningHand, tilesToCounts, indexToTile } from "../game/agari.js";
 import { type Meld, MeldType, type Tile, type Discard } from "../game/types.js";
 import { DiscardView, tileColor } from "./DiscardView.js";
 import { WaitsInfo } from "./WaitsInfo.js";
+import { KeyLegend } from "./KeyLegend.js";
 
 // ── Display helpers ────────────────────────────────────────────────
 
@@ -225,7 +226,6 @@ const ClaimMenu: React.FC<ClaimMenuProps> = ({ options, selectedIndex }) => {
           </Box>
         );
       })}
-      <Text dimColor>L:ロン C:チー P:ポン K:カン Space/Esc:パス ←→:選択</Text>
     </Box>
   );
 };
@@ -260,9 +260,6 @@ const ActionBar: React.FC<ActionBarProps> = ({
         {canKyuushu && <Text color="magenta"> [Y]九種九牌 </Text>}
       </Box>
       <WaitsInfo waits={waits} showNames={showWaits} />
-      <Box marginTop={1}>
-        <Text dimColor>{"← →: 選択  Enter: 打牌  [W]待ち牌"}</Text>
-      </Box>
       <Box marginTop={1}>
         <Text>{message}</Text>
       </Box>
@@ -531,6 +528,10 @@ const App: React.FC = () => {
     }
 
     // Playing phase: only human's turn
+    if (input === "q") {
+      exit();
+      return;
+    }
     if (state.currentPlayer !== 0) return;
 
     // リーチ中は強制ツモ切り: 自摸和(T)以外は受け付けない
@@ -792,6 +793,7 @@ const App: React.FC = () => {
           <Box marginTop={1}>
             <Text>{state.message}</Text>
           </Box>
+          <KeyLegend phase="claiming" />
         </Box>
       </Box>
     );
@@ -898,6 +900,7 @@ const App: React.FC = () => {
           waits={humanWaits}
           showWaits={showWaits}
         />
+        <KeyLegend phase="playing" />
       </Box>
     </Box>
   );

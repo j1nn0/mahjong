@@ -296,13 +296,23 @@ $ tsc --noEmit (no output)
 
 受け入れ条件:
 
-- [ ] プレイ中画面のフッターに現在のフェーズで有効なキー一覧を表示する
-- [ ] クレームフェーズでは `L:ロン C:チー P:ポン K:カン Space/Esc:パス ←→:選択` を表示する
-- [ ] プレイフェーズでは `←→:選択 Enter:打牌 T:ツモ R:リーチ K:カン Y:九種 Q:終了` を表示する
+- [x] プレイ中画面のフッターに現在のフェーズで有効なキー一覧を表示する
+- [x] クレームフェーズでは `L:ロン C:チー P:ポン K:カン Space/Esc:パス ←→:選択` を表示する
+- [x] プレイフェーズでは `←→:選択 Enter:打牌 T:ツモ R:リーチ K:カン Y:九種 Q:終了` を表示する
 
 想定変更ファイル:
 
 - `src/ui/App.tsx`
+- `src/ui/KeyLegend.tsx`（新規）
+
+検証結果 (2026-06-19):
+
+```
+✓ src/ui/KeyLegend.test.tsx (2 tests) 5ms
+Test Files  13 passed (13)
+     Tests  222 passed (222)
+$ tsc --noEmit (no output)
+```
 
 ---
 
