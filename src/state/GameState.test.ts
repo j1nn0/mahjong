@@ -392,6 +392,66 @@ describe("abortive draws", () => {
     expect(action?.type).not.toBe("ANKAN");
   });
 
+  it("processAiTurn declares riichi when ready and points >= 1000", () => {
+    // 123m 456p 789s 23p 99s (13 tiles). Add 1s (14th tile).
+    // If discard 1s, remaining hand is 123m 456p 789s 23p 99s. Wait is 1p, 4p.
+    const hand = [m(1), m(2), m(3), p(4), p(5), p(6), s(7), s(8), s(9), p(2), p(3), s(9), s(9)];
+    const handWithDraw = [...hand, s(1)];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(handWithDraw), points: 1000 },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action?.type).toBe("DECLARE_RIICHI");
+    expect(action).toEqual({ type: "DECLARE_RIICHI", player: 1, discardTile: s(1) });
+  });
+
+  it("processAiTurn does not declare riichi if points < 1000", () => {
+    const hand = [m(1), m(2), m(3), p(4), p(5), p(6), s(7), s(8), s(9), p(2), p(3), s(9), s(9)];
+    const handWithDraw = [...hand, s(1)];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(handWithDraw), points: 900 },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action?.type).toBe("DISCARD");
+  });
+
+  it("processAiTurn does not declare riichi if not closed (has open meld)", () => {
+    // 123m 456p 23p 99s (10 tiles). Open Chi: 789s.
+    const handClosed = [m(1), m(2), m(3), p(4), p(5), p(6), p(2), p(3), s(9), s(9)];
+    const openMeld: Meld = { type: MeldType.Chi, tiles: [s(7), s(8), s(9)], calledTile: s(7) };
+    const handWithDraw = [...handClosed, s(1)];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(handWithDraw), melds: [openMeld], points: 1000 },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action?.type).toBe("DISCARD");
+  });
+
+
   it("ends the round on suufon renda after the fourth matching wind discard", () => {
     const state = startedState({
       dealer: 0,
