@@ -26,6 +26,7 @@ import {
   finishRound,
   canScoreTsumo,
 } from "./finishRound.js";
+import { chiKuikaeProhibitedTiles } from "./claimPhase.js";
 
 // ── Re-exports (preserve existing import paths) ────────────────────
 
@@ -182,6 +183,14 @@ function isMeldTanyaoAiming(option: MeldClaimOption): boolean {
 
 function isMeldTenpaiMaking(simulated: { hand: Tile[]; melds: Meld[] }): boolean {
   return findWaits(simulated.hand, simulated.melds).length > 0;
+}
+
+function canDiscardAfterMeldClaim(option: MeldClaimOption, simulated: { hand: Tile[] }): boolean {
+  const prohibited =
+    option.type === "chi" ? chiKuikaeProhibitedTiles(option) : [option.calledTile];
+  return simulated.hand.some(
+    (tile) => !prohibited.some((prohibitedTile) => isSameTileKind(prohibitedTile, tile)),
+  );
 }
 
 function tileKindKey(tile: Tile): string {
@@ -387,6 +396,7 @@ export function processAiTurn(state: GameState): {
     const claim = aiClaims.find((c) => {
       if (c.type === "ron" || c.type === "daiminkan") return true;
       const simulated = simulateMeldClaim(state.players[c.player], c as MeldClaimOption);
+      if (!canDiscardAfterMeldClaim(c as MeldClaimOption, simulated)) return false;
       return isMeldTanyaoAiming(c as MeldClaimOption) || isMeldTenpaiMaking(simulated);
     });
     if (claim) {

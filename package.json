@@ -4,6 +4,7 @@
   "scripts": {
     "start": "tsx src/index.tsx",
     "test": "vitest run",
+    "test:stress": "MAHJONG_STRESS=1 vitest run src/state/GameState.stress.test.ts",
     "test:watch": "vitest"
   },
   "dependencies": {

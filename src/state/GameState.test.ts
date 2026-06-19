@@ -637,6 +637,34 @@ describe("abortive draws", () => {
     expect((action as { player: number }).player).toBe(2);
   });
 
+  it("processAiTurn passes a chi that leaves no legal discard after kuikae", () => {
+    const exposedMelds: Meld[] = [
+      { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) },
+      { type: MeldType.Poon, tiles: [p(3), p(3), p(3)], calledTile: p(3) },
+      { type: MeldType.Poon, tiles: [s(7), s(7), s(7)], calledTile: s(7) },
+    ];
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      {
+        ...makeTestPlayer([s(3), s(4), s(5), s(6)]),
+        melds: exposedMelds,
+      },
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: s(3), player: 1 },
+      claimOptions: collectClaims(s(3), 1, players).filter((claim) => claim.type === "chi"),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "PASS_CLAIM" });
+  });
+
   it("processAiTurn claims a tanyao-aiming pon", () => {
     const players = makePlayers(
       makeTestPlayer([]),
