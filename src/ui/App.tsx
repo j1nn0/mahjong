@@ -676,11 +676,13 @@ const App: React.FC = () => {
             ))}
           </Box>
         )}
-        <Text dimColor marginTop={1}>
-          {state.phase === "roundEnded"
-            ? "N / Enter / Space: 次局へ"
-            : "[Space] もう一度遊ぶ / [Q] 終了する"}
-        </Text>
+        <Box marginTop={1}>
+          <Text dimColor>
+            {state.phase === "roundEnded"
+              ? "N / Enter / Space: 次局へ"
+              : "[Space] もう一度遊ぶ / [Q] 終了する"}
+          </Text>
+        </Box>
       </Box>
     );
   }

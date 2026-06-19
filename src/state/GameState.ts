@@ -81,7 +81,7 @@ export interface GameState {
     firstTurnInterrupted: boolean;
     pendingAbortiveDraw: AbortiveDrawReason | null;
     calledDiscardKinds: readonly (readonly string[])[];
-    pendingKanDora?: boolean;
+    pendingKanDora: boolean;
     roundHistory: readonly RoundHistoryItem[];
 }
 // ── Actions ────────────────────────────────────────────────────────
@@ -1667,5 +1667,6 @@ export function normalizeGameState(value: unknown): GameState {
         calledDiscardKinds: Array.isArray(value.calledDiscardKinds)
             ? (value.calledDiscardKinds as string[][])
             : base.calledDiscardKinds,
+        pendingKanDora: typeof value.pendingKanDora === "boolean" ? value.pendingKanDora : base.pendingKanDora,
     };
 }
