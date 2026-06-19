@@ -14,6 +14,7 @@ import { formatTile, getDoraIndicators, tileToUnicode } from "../game/tiles.js";
 import { isWinningHand, tilesToCounts, indexToTile } from "../game/agari.js";
 import { type Meld, MeldType, type Tile, type Discard } from "../game/types.js";
 import { DiscardView, tileColor } from "./DiscardView.js";
+import { WaitsInfo } from "./WaitsInfo.js";
 
 // ── Display helpers ────────────────────────────────────────────────
 
@@ -238,6 +239,7 @@ interface ActionBarProps {
   canKyuushu: boolean;
   message: string;
   waits: Tile[];
+  showWaits: boolean;
 }
 
 const ActionBar: React.FC<ActionBarProps> = ({
@@ -247,6 +249,7 @@ const ActionBar: React.FC<ActionBarProps> = ({
   canKyuushu,
   message,
   waits,
+  showWaits,
 }) => {
   return (
     <Box flexDirection="column" marginTop={1}>
@@ -255,16 +258,11 @@ const ActionBar: React.FC<ActionBarProps> = ({
         {canRiichi && <Text color="yellow"> [R]リーチ </Text>}
         {canKan && <Text color="cyan"> [K]カン </Text>}
         {canKyuushu && <Text color="magenta"> [Y]九種九牌 </Text>}
-        {waits.length > 0 && <Text color="blue"> 待ち: {waits.length}種 </Text>}
       </Box>
+      <WaitsInfo waits={waits} showNames={showWaits} />
       <Box marginTop={1}>
-        <Text dimColor>{"← →: 選択  Enter: 打牌"}</Text>
+        <Text dimColor>{"← →: 選択  Enter: 打牌  [W]待ち牌"}</Text>
       </Box>
-      {waits.length > 0 && (
-        <Box marginTop={1}>
-          <Text color="blue">待ち牌: {waits.map(formatTile).join(" ")}</Text>
-        </Box>
-      )}
       <Box marginTop={1}>
         <Text>{message}</Text>
       </Box>
@@ -284,6 +282,7 @@ const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
+  const [showWaits, setShowWaits] = useState(false);
   const processingRef = useRef(false);
   const [startupMode, setStartupMode] = useState<"loading" | "choose" | "ready">("loading");
   const [savedState, setSavedState] = useState<GameState | null>(null);
@@ -539,6 +538,12 @@ const App: React.FC = () => {
       if (input === "t") {
         dispatch({ type: "TSUMO", player: 0 });
       }
+      return;
+    }
+
+    // 待ち牌表示トグル
+    if (input === "w") {
+      setShowWaits((prev) => !prev);
       return;
     }
 
@@ -891,6 +896,7 @@ const App: React.FC = () => {
           canKyuushu={humanCanKyuushu}
           message={state.message}
           waits={humanWaits}
+          showWaits={showWaits}
         />
       </Box>
     </Box>
