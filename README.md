@@ -56,6 +56,13 @@ pnpm start
 
 保存済み対戦がある場合、起動時に続きから再開するか、新しい対戦を始めるかを選べます。保存ファイルは `.mahjong-save.json` です。
 
+AIの思考遅延は `MAHJONG_AI_DELAY` 環境変数（ミリ秒）で調整できます。デフォルトは `600` です:
+
+```bash
+MAHJONG_AI_DELAY=200 pnpm start   # 高速
+MAHJONG_AI_DELAY=1000 pnpm start  # 低速
+```
+
 ## Controls
 
 通常の打牌:

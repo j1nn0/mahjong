@@ -25,6 +25,8 @@ import { DiscardView, tileColor } from "./DiscardView.js";
 import { WaitsInfo } from "./WaitsInfo.js";
 import { KeyLegend } from "./KeyLegend.js";
 
+const AI_DELAY = parseInt(process.env.MAHJONG_AI_DELAY ?? "600", 10);
+
 // ── Display helpers ────────────────────────────────────────────────
 
 function stringDisplayWidth(str: string): number {
@@ -369,7 +371,7 @@ const App: React.FC = () => {
           const message = err instanceof Error ? err.message : String(err);
           dispatch({ type: "SET_MESSAGE", message: `AIエラー: ${message}` });
         }
-      }, 600);
+      }, AI_DELAY);
       return () => {
         clearTimeout(timer);
         processingRef.current = false;
