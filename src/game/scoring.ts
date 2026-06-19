@@ -231,6 +231,8 @@ export interface ScoreParams {
   dealer?: number;
   doraIndicators?: readonly Tile[];
   uraDoraIndicators?: readonly Tile[];
+  isTenhou?: boolean;
+  isChiihou?: boolean;
 }
 
 export function fullScore(params: ScoreParams): ScoreResult | null {
@@ -250,6 +252,8 @@ export function fullScore(params: ScoreParams): ScoreResult | null {
     isHoutei: params.isHoutei,
     isRinshan: params.isRinshan,
     isChankan: params.isChankan,
+    isTenhou: params.isTenhou ?? false,
+    isChiihou: params.isChiihou ?? false,
   });
 
   if (!groups || yaku.length === 0) return null;

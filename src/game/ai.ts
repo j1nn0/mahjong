@@ -98,10 +98,12 @@ function evaluateDiscards(
   hand: readonly Tile[],
   opponentDiscards: readonly (readonly Tile[])[],
   opponentRiichi: readonly boolean[],
+  prohibitedTiles: readonly Tile[] = [],
 ): Array<{ tile: Tile; tenpai: number[]; danger: number }> {
   const results: Array<{ tile: Tile; tenpai: number[]; danger: number }> = [];
 
   for (const t of hand) {
+    if (prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) continue;
     const testHand = hand.filter(h => h !== t);
     const waits = findTenpaiTiles(testHand);
     const danger = evaluateDanger(t, opponentDiscards, opponentRiichi);
@@ -122,13 +124,14 @@ export function aiChooseDiscard(
   hand: readonly Tile[],
   opponentDiscards: readonly (readonly Tile[])[],
   opponentRiichi: readonly boolean[],
+  prohibitedTiles: readonly Tile[] = [],
 ): Tile {
   if (hand.length !== 14) {
     // 14枚でなければエラーだが、fallback
-    return hand[0] ?? indexToTile(0);
+    return hand.find(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) ?? hand[0] ?? indexToTile(0);
   }
 
-  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi);
+  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi, prohibitedTiles);
 
   // テンパイする候補に絞る
   const tenpaiCandidates = evals.filter(e => e.tenpai.length > 0);
@@ -139,12 +142,13 @@ export function aiChooseDiscard(
   }
 
   // テンパイできない: 孤立牌優先（スコア最低の牌）
-  return fallbackIsolated(hand);
+  return fallbackIsolated(hand, prohibitedTiles);
 }
 
 /** 孤立牌優先のfallback */
-function fallbackIsolated(hand: readonly Tile[]): Tile {
-  const sorted = sortHand([...hand]);
+function fallbackIsolated(hand: readonly Tile[], prohibitedTiles: readonly Tile[] = []): Tile {
+  const legal = hand.filter(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value));
+  const sorted = sortHand(legal.length > 0 ? legal : [...hand]);
   const counts = new Map<string, number>();
   for (const t of sorted) {
     const key = `${t.suit}:${t.value}`;

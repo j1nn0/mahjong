@@ -5,6 +5,7 @@ import {
   gameReducer,
   normalizeGameState,
   processAiTurn,
+  canDeclareKyuushuKyuuhai,
 } from "../state/GameState.js";
 import { saveGame, loadGame, clearSave } from "../state/persistence.js";
 import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
@@ -254,16 +255,18 @@ interface ActionBarProps {
   canTsumo: boolean;
   canRiichi: boolean;
   canKan: boolean;
+  canKyuushu: boolean;
   message: string;
 }
 
-const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, message }) => {
+const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canKyuushu, message }) => {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
         {canTsumo && <Text color="green"> [T]ツモ </Text>}
         {canRiichi && <Text color="yellow"> [R]リーチ </Text>}
         {canKan && <Text color="cyan"> [K]カン </Text>}
+        {canKyuushu && <Text color="magenta"> [Y]九種九牌 </Text>}
       </Box>
       <Box marginTop={1}>
         <Text dimColor>{"← →: 選択  Enter: 打牌"}</Text>
@@ -411,6 +414,7 @@ const App: React.FC = () => {
     );
   })();
   const humanCanKan = humanCanAnkan || humanCanKakan;
+  const humanCanKyuushu = canDeclareKyuushuKyuuhai(state, 0);
 
   // Keyboard input
   useInput((input, key) => {
@@ -545,6 +549,11 @@ const App: React.FC = () => {
 
     if (input === "t") {
       dispatch({ type: "TSUMO", player: 0 });
+      return;
+    }
+
+    if (input === "y" && humanCanKyuushu) {
+      dispatch({ type: "DECLARE_KYUUSHU_KYUUHAI", player: 0 });
       return;
     }
   });
@@ -820,6 +829,7 @@ const App: React.FC = () => {
           canTsumo={humanCanTsumo}
           canRiichi={humanCanRiichi}
           canKan={humanCanKan}
+          canKyuushu={humanCanKyuushu}
           message={state.message}
         />
       </Box>

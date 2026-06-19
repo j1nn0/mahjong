@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { detectYaku, YakuId } from '../game/yaku.js';
-import { Suit, MeldType, type Tile, type Meld } from '../game/types.js';
+import { Suit, MeldType, Wind, Dragon, type Tile, type Meld } from '../game/types.js';
 
 // ── Tile helpers ───────────────────────────────────────────────────
 
@@ -37,6 +37,8 @@ function detectParams(opts: {
   playerWind?: number;
   riichi?: boolean;
   rinshan?: boolean;
+  isTenhou?: boolean;
+  isChiihou?: boolean;
 }) {
   return {
     closedTiles: opts.closed,
@@ -52,6 +54,8 @@ function detectParams(opts: {
     isHoutei: false,
     isRinshan: opts.rinshan ?? false,
     isChankan: false,
+    isTenhou: opts.isTenhou ?? false,
+    isChiihou: opts.isChiihou ?? false,
   };
 }
 
@@ -316,7 +320,7 @@ describe('Rinshankai', () => {
       p(3),
       p(4),
       p(5),
-    ];
+    ] as Tile[];
     const result = detectYaku(
       detectParams({ closed, winTile: p(5), tsumo: true }),
     );
@@ -345,5 +349,63 @@ describe('Sanankou + Suuankou coexistence', () => {
     const result = detectYaku(detectParams({ closed, winTile: p(5) }));
     expect(result.yaku.some((y) => y.id === YakuId.Sanankou)).toBe(true);
     expect(result.yaku.some((y) => y.id === YakuId.SuuankouTanki)).toBe(true);
+  });
+});
+
+describe('totalHan and Kuisa-gari', () => {
+  it('calculates kuisa-gari correctly for open hands (e.g. Chinitsu + Ittsuu)', async () => {
+    const { totalHan } = await import('../game/yaku.js');
+    // Open Chinitsu + Ittsuu: 123m (chi) + 456m + 789m + 11m (pair) + 23m (wait on 1m/4m)
+    // Chinitsu hanClosed: 6, hanOpen: 5
+    // Ittsuu hanClosed: 2, hanOpen: 1
+    const closed = [
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      m(1), m(1),
+      m(2), m(3)
+    ];
+    const melds: Meld[] = [
+      { type: MeldType.Chi, tiles: [m(1), m(2), m(3)] }
+    ];
+    const result = detectYaku(detectParams({ closed, melds, winTile: m(4) }));
+    
+    const chinitsu = result.yaku.find(y => y.id === YakuId.Chinitsu);
+    expect(chinitsu).toBeDefined();
+    expect(chinitsu!.han).toBe(5); // Should be 5 for open
+
+    const ittsuu = result.yaku.find(y => y.id === YakuId.Ittsuu);
+    expect(ittsuu).toBeDefined();
+    expect(ittsuu!.han).toBe(1); // Should be 1 for open
+
+    // Total han should use the correctly reduced han
+    expect(totalHan(result.yaku)).toBe(6); // 5 + 1
+  });
+});
+
+describe('Tenhou and Chiihou', () => {
+  it('detects Tenhou as standalone yakuman when isTenhou is true', () => {
+    // Hand that also qualifies for Kokushi, to test standalone nature
+    const closed = [
+      m(1), m(9), p(1), p(9), s(1), s(9),
+      { suit: Suit.Wind, value: Wind.Ton }, { suit: Suit.Wind, value: Wind.Nan },
+      { suit: Suit.Wind, value: Wind.Sha }, { suit: Suit.Wind, value: Wind.Pei },
+      { suit: Suit.Dragon, value: Dragon.Haku }, { suit: Suit.Dragon, value: Dragon.Hatsu },
+      { suit: Suit.Dragon, value: Dragon.Chun }
+    ] as Tile[];
+    const winTile = { suit: Suit.Dragon, value: Dragon.Chun } as Tile; // kokushi pair
+    const result = detectYaku(detectParams({ closed, winTile, isTenhou: true, tsumo: true }));
+    expect(result.yaku.length).toBe(1);
+    expect(result.yaku[0]!.id).toBe(YakuId.Tenhou);
+  });
+
+  it('detects Chiihou as standalone yakuman when isChiihou is true', () => {
+    // Hand that also qualifies for Suuankou, to test standalone nature
+    const closed = [
+      m(1), m(1), m(1), p(2), p(2), p(2), s(3), s(3), s(3), m(4), m(4), m(4), p(5)
+    ];
+    const winTile = p(5);
+    const result = detectYaku(detectParams({ closed, winTile, isChiihou: true, tsumo: true }));
+    expect(result.yaku.length).toBe(1);
+    expect(result.yaku[0]!.id).toBe(YakuId.Chiihou);
   });
 });

@@ -94,4 +94,20 @@ describe('aiChooseDiscard', () => {
     expect(chosen.suit).toBe(Suit.Pin);
     expect(chosen.value).toBe(9);
   });
+
+  it('does not choose prohibited kuikae tiles', () => {
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      s(1), s(2), s(3),
+      p(1), p(9),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [], [], []];
+    const riichi: readonly boolean[] = [false, false, false, false];
+
+    const chosen = aiChooseDiscard(hand, discards, riichi, [p(1), p(9)]);
+
+    expect(chosen.suit).not.toBe(Suit.Pin);
+  });
 });

@@ -37,6 +37,7 @@ export interface MeldClaimOption {
     meld: Meld;
     display: string;
 }
+export type AbortiveDrawReason = "kyuushuKyuuhai" | "suufonRenda" | "suuchaRiichi" | "suukanSanra" | "sanchaHou";
 function isMeldClaimOption(option: ClaimOption, type: MeldClaimOption["type"], player: number): option is MeldClaimOption {
     return option.type === type && option.player === player;
 }
@@ -71,6 +72,10 @@ export interface GameState {
     pendingRinshan: boolean;
     lastDrawWasRinshan: boolean;
     lastDiscardWasChankan: boolean;
+    kuikaeProhibitedTiles: readonly Tile[];
+    firstTurnInterrupted: boolean;
+    pendingAbortiveDraw: AbortiveDrawReason | null;
+    calledDiscardKinds: readonly (readonly string[])[];
 }
 // ── Actions ────────────────────────────────────────────────────────
 export type GameAction = {
@@ -111,6 +116,9 @@ export type GameAction = {
     winner: number;
 } | {
     type: "TSUMO";
+    player: number;
+} | {
+    type: "DECLARE_KYUUSHU_KYUUHAI";
     player: number;
 } | {
     type: "END_ROUND";
@@ -164,6 +172,75 @@ function removeTileKind(hand: readonly Tile[], tile: Tile, count: number): Tile[
 function matchingTileKind(hand: readonly Tile[], tile: Tile): Tile[] {
     return hand.filter((t) => isSameTileKind(t, tile));
 }
+function isKuikaeProhibited(state: GameState, player: number, tile: Tile): boolean {
+    return state.currentPlayer === player && state.kuikaeProhibitedTiles.some((prohibited) => isSameTileKind(prohibited, tile));
+}
+function kuikaeMessage(tile: Tile): string {
+    return `食い替え禁止: ${formatTile(tile)} は切れません`;
+}
+function chiKuikaeProhibitedTiles(option: MeldClaimOption): readonly Tile[] {
+    const called = option.calledTile;
+    if (called.suit === Suit.Wind || called.suit === Suit.Dragon)
+        return [called];
+    const prohibited: Tile[] = [called];
+    for (const offset of [-3, 3]) {
+        const value = (called.value as number) + offset;
+        if (value >= 1 && value <= 9) {
+            prohibited.push({ suit: called.suit, value: value as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 });
+        }
+    }
+    return prohibited;
+}
+function isYaochu(tile: Tile): boolean {
+    return tile.suit === Suit.Wind || tile.suit === Suit.Dragon || tile.value === 1 || tile.value === 9;
+}
+function tileKindKey(tile: Tile): string {
+    return `${tile.suit}:${tile.value}`;
+}
+function emptyCalledDiscardKinds(): readonly (readonly string[])[] {
+    return [[], [], [], []];
+}
+export function canDeclareKyuushuKyuuhai(state: GameState, player: number): boolean {
+    if (state.phase !== "playing" || state.currentPlayer !== player || state.firstTurnInterrupted)
+        return false;
+    const playerData = state.players[player];
+    if (playerData.discards.length > 0 || turnTileCount(playerData) !== expectedAfterDraw(playerData))
+        return false;
+    const yaochuKinds = new Set(playerData.hand.filter(isYaochu).map(tileKindKey));
+    return yaochuKinds.size >= 9;
+}
+function abortiveDrawMessage(reason: AbortiveDrawReason): string {
+    switch (reason) {
+        case "kyuushuKyuuhai":
+            return "途中流局: 九種九牌";
+        case "suufonRenda":
+            return "途中流局: 四風連打";
+        case "suuchaRiichi":
+            return "途中流局: 四家立直";
+        case "suukanSanra":
+            return "途中流局: 四槓散了";
+        case "sanchaHou":
+            return "途中流局: 三家和";
+    }
+}
+function nagashiManganScore(winner: number, dealer: number, riichiSticks: number, honba: number): ScoreResult {
+    return {
+        han: 5,
+        yakuman: 0,
+        fu: 30,
+        basePoints: 2000,
+        doraHan: 0,
+        score: (winner === dealer ? 12000 : 8000) + riichiSticks * 1000 + honba * 300,
+        payment: {
+            from: winner === dealer
+                ? [0, 1, 2, 3].filter((i) => i !== winner).map((player) => ({ player, amount: 4000 + honba * 100 }))
+                : [0, 1, 2, 3].filter((i) => i !== winner).map((player) => ({ player, amount: player === dealer ? 4000 + honba * 100 : 2000 + honba * 100 })),
+            winnerGets: (winner === dealer ? 12000 : 8000) + riichiSticks * 1000 + honba * 300,
+        },
+        yaku: [{ id: "nagashiMangan" as never, name: "流し満貫", han: 5, yakuman: false, doubleYakuman: false }],
+        limit: "mangan",
+    };
+}
 function turnTileCount(player: PlayerData): number {
     return player.hand.length + player.melds.reduce((sum, meld) => sum + meld.tiles.length, 0);
 }
@@ -202,6 +279,27 @@ function revealKanDora(deadWall: DeadWallState): DeadWallState {
         ...deadWall,
         doraCount: Math.min(deadWall.doraCount + 1, 5, deadWall.tiles.length),
     };
+}
+function totalKanCount(players: readonly PlayerData[]): number {
+    return players.reduce((sum, player) => sum + kanCount(player), 0);
+}
+function playersWithKan(players: readonly PlayerData[]): number {
+    return players.filter((player) => kanCount(player) > 0).length;
+}
+function nextPendingAbortiveDrawAfterKan(players: readonly PlayerData[]): AbortiveDrawReason | null {
+    return totalKanCount(players) >= 4 && playersWithKan(players) > 1 ? "suukanSanra" : null;
+}
+function isSuufonRenda(players: readonly [
+    PlayerData,
+    PlayerData,
+    PlayerData,
+    PlayerData
+], firstTurnInterrupted: boolean): boolean {
+    if (firstTurnInterrupted || players.some((player) => player.discards.length !== 1))
+        return false;
+    const firstDiscards = players.map((player) => player.discards[0]!);
+    const first = firstDiscards[0]!;
+    return first.suit === Suit.Wind && firstDiscards.every((tile) => isSameTileKind(tile, first));
 }
 function playerWind(player: number, dealer: number): Wind {
     return ((player - dealer + 4) % 4) as Wind;
@@ -248,7 +346,7 @@ export function dealRound(state: GameState, dealer: number, roundNumber: number,
         players[player] = updPlayer(players[player], { hand: sortHand([...drawn]) });
         wallRemaining = remaining;
     }
-    return {
+    const initialState: GameState = {
         ...state,
         players,
         wall: wallRemaining,
@@ -270,7 +368,53 @@ export function dealRound(state: GameState, dealer: number, roundNumber: number,
         pendingRinshan: false,
         lastDrawWasRinshan: false,
         lastDiscardWasChankan: false,
+        kuikaeProhibitedTiles: [],
+        firstTurnInterrupted: false,
+        pendingAbortiveDraw: null,
+        calledDiscardKinds: emptyCalledDiscardKinds(),
     };
+
+    // Auto-detect Tenhou
+    const winTile = dealerHand[13]!;
+    const closedTiles = removeOneTile(dealerHand, winTile);
+    if (isCompleteHand(closedTiles, [], winTile)) {
+        const score = fullScore({
+            closedTiles,
+            melds: [],
+            winTile,
+            isTsumo: true,
+            roundWind: Wind.Ton,
+            playerSeat: dealer,
+            dealer: dealer,
+            isRiichi: false,
+            riichiSticks: riichiSticks,
+            honba: honba,
+            ...doraParams(initialState),
+            isDoubleRiichi: false,
+            isIppatsu: false,
+            isHaitei: false,
+            isHoutei: false,
+            isRinshan: false,
+            isChankan: false,
+            isTenhou: true,
+            isChiihou: false,
+        });
+        if (score) {
+            const nextPlayers = [...players] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+            const payment = score.payment;
+            for (const p of payment.from) {
+                nextPlayers[p.player] = updPlayer(nextPlayers[p.player], {
+                    points: nextPlayers[p.player].points - p.amount,
+                });
+            }
+            nextPlayers[dealer] = updPlayer(nextPlayers[dealer], {
+                points: nextPlayers[dealer].points + payment.winnerGets,
+            });
+            return finishRound(initialState, nextPlayers, dealer, false, true, score, "天和！");
+        }
+    }
+
+    return initialState;
 }
 function finishRound(state: GameState, players: readonly [
     PlayerData,
@@ -284,7 +428,8 @@ function finishRound(state: GameState, players: readonly [
     const nextRiichiSticks = winner === null ? state.riichiSticks : 0;
     const finalRanking = rankPlayers(players);
     const finalDealerTop = dealerContinues && state.roundNumber >= 4 && finalRanking[0] === state.dealer;
-    const matchEnded = state.roundNumber >= 4 && (!dealerContinues || finalDealerTop);
+    const isTobi = players.some((p) => p.points < 0);
+    const matchEnded = isTobi || (state.roundNumber >= 4 && (!dealerContinues || finalDealerTop));
     return {
         ...state,
         players,
@@ -300,8 +445,15 @@ function finishRound(state: GameState, players: readonly [
         pendingRinshan: false,
         lastDrawWasRinshan: false,
         lastDiscardWasChankan: false,
+        kuikaeProhibitedTiles: [],
+        firstTurnInterrupted: false,
+        pendingAbortiveDraw: null,
+        calledDiscardKinds: emptyCalledDiscardKinds(),
         message,
     };
+}
+function finishAbortiveDraw(state: GameState, reason: AbortiveDrawReason): GameState {
+    return finishRound(state, state.players, null, true, false, null, abortiveDrawMessage(reason));
 }
 function closedTilesForTsumo(hand: readonly Tile[], winTile: Tile): readonly Tile[] {
     return removeOneTile(hand, winTile);
@@ -312,6 +464,33 @@ function isCompleteHand(closedTiles: readonly Tile[], melds: readonly Meld[], wi
         return isWinningHand(tilesToCounts(allClosedTiles));
     }
     return decomposeStandardHand(allClosedTiles, melds) !== null;
+}
+function canScoreTsumo(state: GameState, player: number, winTile: Tile): boolean {
+    const playerData = state.players[player];
+    const closedTiles = closedTilesForTsumo(playerData.hand, winTile);
+    if (!isCompleteHand(closedTiles, playerData.melds, winTile))
+        return false;
+    return fullScore({
+        closedTiles,
+        melds: playerData.melds,
+        winTile,
+        isTsumo: true,
+        roundWind: state.roundWind,
+        playerSeat: player,
+        dealer: state.dealer,
+        isRiichi: playerData.riichi,
+        riichiSticks: state.riichiSticks,
+        honba: state.honba,
+        ...doraParams(state),
+        isDoubleRiichi: playerData.doubleRiichi,
+        isIppatsu: playerData.ippatsu,
+        isHaitei: !state.lastDrawWasRinshan && state.wall.length === 0,
+        isHoutei: false,
+        isRinshan: state.lastDrawWasRinshan,
+        isChankan: false,
+        isTenhou: player === state.dealer && !state.firstTurnInterrupted && playerData.discards.length === 0,
+        isChiihou: player !== state.dealer && !state.firstTurnInterrupted && playerData.discards.length === 0 && playerData.melds.length === 0,
+    }) !== null;
 }
 function applyRonPayment(players: readonly [
     PlayerData,
@@ -331,6 +510,70 @@ function applyRonPayment(players: readonly [
     return updatePlayerInTuple(afterLoser, winner, updPlayer(afterLoser[winner], {
         points: afterLoser[winner].points + score.score,
     }));
+}
+function applyDoubleRonPayments(players: readonly [
+    PlayerData,
+    PlayerData,
+    PlayerData,
+    PlayerData
+], winners: readonly [number, number], discarder: number, scores: readonly [ScoreResult, ScoreResult], riichiReceiver: number, riichiSticks: number): [
+    PlayerData,
+    PlayerData,
+    PlayerData,
+    PlayerData
+] {
+    let updated = players as [
+        PlayerData,
+        PlayerData,
+        PlayerData,
+        PlayerData
+    ];
+    let loserPays = 0;
+    for (let i = 0; i < winners.length; i++) {
+        const winner = winners[i]!;
+        const score = scores[i]!;
+        const receivesRiichi = winner === riichiReceiver;
+        const ronPayment = score.score - riichiSticks * 1000;
+        const winnerGain = receivesRiichi ? score.score : ronPayment;
+        loserPays += ronPayment;
+        updated = updatePlayerInTuple(updated, winner, updPlayer(updated[winner], {
+            points: updated[winner].points + winnerGain,
+        }));
+    }
+    return updatePlayerInTuple(updated, discarder, updPlayer(updated[discarder], {
+        points: updated[discarder].points - loserPays,
+    }));
+}
+function ronScore(state: GameState, winner: number): ScoreResult | null {
+    if (!state.lastDiscard)
+        return null;
+    const winTile = state.lastDiscard.tile;
+    if (!isCompleteHand(state.players[winner].hand, state.players[winner].melds, winTile)) {
+        return null;
+    }
+    return fullScore({
+        closedTiles: state.players[winner].hand,
+        melds: state.players[winner].melds,
+        winTile,
+        isTsumo: false,
+        roundWind: state.roundWind,
+        playerSeat: winner,
+        dealer: state.dealer,
+        isRiichi: state.players[winner].riichi,
+        riichiSticks: state.riichiSticks,
+        honba: state.honba,
+        ...doraParams(state),
+        isDoubleRiichi: state.players[winner].doubleRiichi,
+        isIppatsu: state.players[winner].ippatsu,
+        isHaitei: false,
+        isHoutei: !state.lastDiscardWasChankan && state.wall.length === 0,
+        isRinshan: false,
+        isChankan: state.lastDiscardWasChankan,
+    });
+}
+function ronClaimPlayers(state: GameState): number[] {
+    return sortClaimsByPriority(state.claimOptions.filter((claim) => claim.type === "ron"), state.lastDiscard?.player ?? 0)
+        .map((claim) => claim.player);
 }
 function applyTsumoPayment(players: readonly [
     PlayerData,
@@ -355,8 +598,56 @@ function applyTsumoPayment(players: readonly [
         PlayerData
     ];
 }
+function applyNagashiManganPayments(state: GameState, winners: readonly number[]): {
+    players: [
+        PlayerData,
+        PlayerData,
+        PlayerData,
+        PlayerData
+    ];
+    scores: ScoreResult[];
+} {
+    let players = state.players as [
+        PlayerData,
+        PlayerData,
+        PlayerData,
+        PlayerData
+    ];
+    const scores: ScoreResult[] = [];
+    for (const winner of winners) {
+        const score = nagashiManganScore(winner, state.dealer, 0, state.honba);
+        scores.push(score);
+        players = applyTsumoPayment(players, winner, score);
+    }
+    if (state.riichiSticks > 0 && winners.length > 0) {
+        const receiver = winners[0]!;
+        players = updatePlayerInTuple(players, receiver, updPlayer(players[receiver], {
+            points: players[receiver].points + state.riichiSticks * 1000,
+        }));
+    }
+    return { players, scores };
+}
+function nagashiManganWinners(state: GameState): number[] {
+    const winners: number[] = [];
+    for (let i = 0; i < 4; i++) {
+        const player = state.players[i]!;
+        if (player.discards.length === 0)
+            continue;
+        const calledKinds = new Set(state.calledDiscardKinds[i] ?? []);
+        if (player.discards.every(isYaochu) && player.discards.every((tile) => !calledKinds.has(tileKindKey(tile)))) {
+            winners.push(i);
+        }
+    }
+    return winners;
+}
 /** 流局時の聴牌確認と点棒移動 */
 function handleExhaustiveDraw(state: GameState): GameState {
+    const nagashiWinners = nagashiManganWinners(state);
+    if (nagashiWinners.length > 0) {
+        const { players, scores } = applyNagashiManganPayments(state, nagashiWinners);
+        const names = nagashiWinners.map((winner) => winner === 0 ? "\u3042\u306A\u305F" : `プレイヤー${winner + 1}`).join("\u30FB");
+        return finishRound(state, players, nagashiWinners[0]!, false, nagashiWinners.includes(state.dealer), scores[0]!, `${names}が流し満貫!`);
+    }
     const tenpaiList: number[] = [];
     const notenList: number[] = [];
     for (let i = 0; i < 4; i++) {
@@ -579,13 +870,16 @@ export function processAiTurn(state: GameState): {
         return { state, action: { type: "DRAW", player: state.currentPlayer } };
     }
     if (totalTiles === readyDiscard && player.hand.length > 0) {
+        if (canDeclareKyuushuKyuuhai(state, state.currentPlayer)) {
+            return { state, action: { type: "DECLARE_KYUUSHU_KYUUHAI", player: state.currentPlayer } };
+        }
         const winTile = state.lastDrawnTile ?? player.hand[player.hand.length - 1]!;
-        if (isCompleteHand(closedTilesForTsumo(player.hand, winTile), player.melds, winTile)) {
+        if (canScoreTsumo(state, state.currentPlayer, winTile)) {
             return { state, action: { type: "TSUMO", player: state.currentPlayer } };
         }
         const discard = player.riichi && state.lastDrawnTile
             ? state.lastDrawnTile
-            : aiChooseDiscard(player.hand, state.players.map((p) => p.discards), state.players.map((p) => p.riichi));
+            : aiChooseDiscard(player.hand, state.players.map((p) => p.discards), state.players.map((p) => p.riichi), state.kuikaeProhibitedTiles);
         const testHand = removeOneTile(player.hand, discard);
         if (canDeclareRiichi(player) && findWaits(testHand, player.melds).length > 0 && player.points >= 1000) {
             return {
@@ -596,7 +890,7 @@ export function processAiTurn(state: GameState): {
         return { state, action: { type: "DISCARD", player: state.currentPlayer, tile: discard } };
     }
     if (player.hand.length > 0) {
-        const discard = aiChooseDiscard(player.hand, state.players.map((p) => p.discards), state.players.map((p) => p.riichi));
+        const discard = aiChooseDiscard(player.hand, state.players.map((p) => p.discards), state.players.map((p) => p.riichi), state.kuikaeProhibitedTiles);
         return { state, action: { type: "DISCARD", player: state.currentPlayer, tile: discard } };
     }
     return { state, action: null };
@@ -670,6 +964,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         case "DISCARD": {
             const player = state.players[action.player];
             const tileStr = formatTile(action.tile);
+            if (isKuikaeProhibited(state, action.player, action.tile)) {
+                return { ...state, message: kuikaeMessage(action.tile) };
+            }
             const fixedHand = removeOneTile(player.hand, action.tile);
             const updatedPlayer = updPlayer(player, {
                 hand: sortHand(fixedHand),
@@ -680,6 +977,22 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             // Check claims
             const claims = collectClaims(action.tile, action.player, newPlayers);
             const sorted = sortClaimsByPriority(claims, action.player);
+            if (state.pendingAbortiveDraw === "suukanSanra") {
+                const ronClaims = sorted.filter((claim) => claim.type === "ron");
+                if (ronClaims.length === 0) {
+                    return finishAbortiveDraw({ ...state, players: newPlayers, lastDiscard: { tile: action.tile, player: action.player } }, "suukanSanra");
+                }
+                return {
+                    ...state,
+                    players: newPlayers,
+                    lastDiscard: { tile: action.tile, player: action.player },
+                    lastDiscardWasChankan: false,
+                    claimOptions: ronClaims,
+                    phase: "claiming",
+                    kuikaeProhibitedTiles: [],
+                    message: `${tileStr} を切りました。`,
+                };
+            }
             if (sorted.length > 0) {
                 return {
                     ...state,
@@ -688,8 +1001,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     lastDiscardWasChankan: false,
                     claimOptions: sorted,
                     phase: "claiming",
+                    kuikaeProhibitedTiles: [],
                     message: `${tileStr} を切りました。`,
                 };
+            }
+            if (isSuufonRenda(newPlayers, state.firstTurnInterrupted)) {
+                return finishAbortiveDraw({ ...state, players: newPlayers, lastDiscard: { tile: action.tile, player: action.player } }, "suufonRenda");
             }
             return {
                 ...state,
@@ -698,6 +1015,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 lastDiscardWasChankan: false,
                 currentPlayer: (action.player + 1) % 4,
                 claimOptions: [],
+                kuikaeProhibitedTiles: [],
                 message: player.riichi ? `${tileStr} を切りました (リーチ中)` : `${tileStr} を切りました`,
             };
         }
@@ -724,6 +1042,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
                 newPlayers = updatePlayerInTuple(newPlayers, dIdx, updPlayer(dPlayer, { discards: fixedDiscs }));
             }
+            const calledDiscardKinds = state.lastDiscard
+                ? state.calledDiscardKinds.map((kinds, i) => i === state.lastDiscard!.player ? [...kinds, tileKindKey(state.lastDiscard!.tile)] : kinds)
+                : state.calledDiscardKinds;
             return {
                 ...state,
                 players: newPlayers,
@@ -731,6 +1052,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 phase: "playing",
                 claimOptions: [],
                 lastDiscardWasChankan: false,
+                kuikaeProhibitedTiles: chiKuikaeProhibitedTiles(option),
+                firstTurnInterrupted: true,
+                calledDiscardKinds,
                 message: "\u30C1\u30FC\uFF01",
             };
         }
@@ -756,6 +1080,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
                 newPlayers = updatePlayerInTuple(newPlayers, dIdx, updPlayer(dPlayer, { discards: fixedDiscs }));
             }
+            const calledDiscardKinds = state.lastDiscard
+                ? state.calledDiscardKinds.map((kinds, i) => i === state.lastDiscard!.player ? [...kinds, tileKindKey(state.lastDiscard!.tile)] : kinds)
+                : state.calledDiscardKinds;
             return {
                 ...state,
                 players: newPlayers,
@@ -763,6 +1090,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 phase: "playing",
                 claimOptions: [],
                 lastDiscardWasChankan: false,
+                kuikaeProhibitedTiles: [option.calledTile],
+                firstTurnInterrupted: true,
+                calledDiscardKinds,
                 message: `ポン！ ${formatTile(option.calledTile)}`,
             };
         }
@@ -788,6 +1118,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
                 newPlayers = updatePlayerInTuple(newPlayers, dIdx, updPlayer(dPlayer, { discards: fixedDiscs }));
             }
+            const calledDiscardKinds = state.lastDiscard
+                ? state.calledDiscardKinds.map((kinds, i) => i === state.lastDiscard!.player ? [...kinds, tileKindKey(state.lastDiscard!.tile)] : kinds)
+                : state.calledDiscardKinds;
             return {
                 ...state,
                 players: newPlayers,
@@ -798,6 +1131,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 pendingRinshan: true,
                 lastDrawWasRinshan: false,
                 lastDiscardWasChankan: false,
+                kuikaeProhibitedTiles: [option.calledTile],
+                firstTurnInterrupted: true,
+                pendingAbortiveDraw: nextPendingAbortiveDrawAfterKan(newPlayers),
+                calledDiscardKinds,
                 message: `カン！ ${formatTile(option.calledTile)}`,
             };
         }
@@ -813,9 +1150,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 hand: sortHand(removeTileKind(player.hand, action.tile, 4)),
                 melds: [...player.melds, meld],
             });
+            const newPlayers = clearIppatsu(updatePlayerInTuple(state.players, action.player, updatedPlayer));
             return {
                 ...state,
-                players: clearIppatsu(updatePlayerInTuple(state.players, action.player, updatedPlayer)),
+                players: newPlayers,
                 deadWall: revealKanDora(state.deadWall),
                 currentPlayer: action.player,
                 phase: "playing",
@@ -823,6 +1161,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 pendingRinshan: true,
                 lastDrawWasRinshan: false,
                 lastDiscardWasChankan: false,
+                pendingAbortiveDraw: nextPendingAbortiveDrawAfterKan(newPlayers),
                 message: `暗槓！ ${formatTile(action.tile)}`,
             };
         }
@@ -865,6 +1204,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                     claimOptions: ronClaims,
                     pendingRinshan: true,
                     lastDrawWasRinshan: false,
+                    pendingAbortiveDraw: nextPendingAbortiveDrawAfterKan(newPlayers),
                     message: `加槓！ ${formatTile(action.tile)}`,
                 };
             }
@@ -878,6 +1218,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 pendingRinshan: true,
                 lastDrawWasRinshan: false,
                 lastDiscardWasChankan: false,
+                pendingAbortiveDraw: nextPendingAbortiveDrawAfterKan(newPlayers),
                 message: `加槓！ ${formatTile(action.tile)}`,
             };
         }
@@ -885,6 +1226,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const discarder = state.lastDiscard?.player;
             if (discarder === undefined)
                 return state;
+            if (state.pendingAbortiveDraw) {
+                return finishAbortiveDraw(state, state.pendingAbortiveDraw);
+            }
             const missedRonPlayers = new Set(state.claimOptions.filter((c) => c.type === "ron").map((c) => c.player));
             const players = state.players.map((player, i) => missedRonPlayers.has(i)
                 ? updPlayer(player, player.riichi ? { riichiFuriten: true } : { temporaryFuriten: true })
@@ -909,6 +1253,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             if (player.points < 1000) {
                 return { ...state, message: "\u30EA\u30FC\u30C1\u3067\u304D\u307E\u305B\u3093 (\u6301\u3061\u70B9\u304C1000\u70B9\u672A\u6E80)" };
             }
+            if (isKuikaeProhibited(state, action.player, action.discardTile)) {
+                return { ...state, message: kuikaeMessage(action.discardTile) };
+            }
             if (!canDeclareRiichi(player)) {
                 return { ...state, message: "\u30EA\u30FC\u30C1\u3067\u304D\u307E\u305B\u3093" };
             }
@@ -919,53 +1266,98 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             }
             const isDoubleRiichi = player.discards.length === 0;
             const tenpaiStr = tenpai.map((i) => formatTile(indexToTile(i))).join(", ");
+            const newPlayers = updatePlayerInTuple(state.players, action.player, updPlayer(player, {
+                hand: sortHand(testHand),
+                discards: [...player.discards, action.discardTile],
+                riichi: true,
+                doubleRiichi: isDoubleRiichi,
+                ippatsu: true,
+                points: player.points - 1000,
+            }));
+            const nextRiichiSticks = state.riichiSticks + 1;
+            const claims = collectClaims(action.discardTile, action.player, newPlayers);
+            const sorted = sortClaimsByPriority(claims, action.player);
+            const allRiichi = newPlayers.every((p) => p.riichi);
+            if (allRiichi) {
+                const ronClaims = sorted.filter((claim) => claim.type === "ron");
+                if (ronClaims.length === 0) {
+                    return finishAbortiveDraw({
+                        ...state,
+                        players: newPlayers,
+                        riichiSticks: nextRiichiSticks,
+                        lastDiscard: { tile: action.discardTile, player: action.player },
+                    }, "suuchaRiichi");
+                }
+                return {
+                    ...state,
+                    players: newPlayers,
+                    riichiSticks: nextRiichiSticks,
+                    lastDiscard: { tile: action.discardTile, player: action.player },
+                    lastDiscardWasChankan: false,
+                    phase: "claiming",
+                    claimOptions: ronClaims,
+                    currentPlayer: (action.player + 1) % 4,
+                    kuikaeProhibitedTiles: [],
+                    pendingAbortiveDraw: "suuchaRiichi",
+                    message: `リーチ! 待ち: ${tenpaiStr}`,
+                };
+            }
+            if (sorted.length > 0) {
+                return {
+                    ...state,
+                    players: newPlayers,
+                    riichiSticks: nextRiichiSticks,
+                    lastDiscard: { tile: action.discardTile, player: action.player },
+                    lastDiscardWasChankan: false,
+                    phase: "claiming",
+                    claimOptions: sorted,
+                    currentPlayer: (action.player + 1) % 4,
+                    kuikaeProhibitedTiles: [],
+                    message: `リーチ! 待ち: ${tenpaiStr}`,
+                };
+            }
+            if (isSuufonRenda(newPlayers, state.firstTurnInterrupted)) {
+                return finishAbortiveDraw({
+                    ...state,
+                    players: newPlayers,
+                    riichiSticks: nextRiichiSticks,
+                    lastDiscard: { tile: action.discardTile, player: action.player },
+                }, "suufonRenda");
+            }
             return {
                 ...state,
-                players: updatePlayerInTuple(state.players, action.player, updPlayer(player, {
-                    hand: sortHand(testHand),
-                    discards: [...player.discards, action.discardTile],
-                    riichi: true,
-                    doubleRiichi: isDoubleRiichi,
-                    ippatsu: true,
-                    points: player.points - 1000,
-                })),
-                riichiSticks: state.riichiSticks + 1,
+                players: newPlayers,
+                riichiSticks: nextRiichiSticks,
                 lastDiscard: { tile: action.discardTile, player: action.player },
                 lastDiscardWasChankan: false,
                 currentPlayer: (action.player + 1) % 4,
+                kuikaeProhibitedTiles: [],
                 message: `リーチ! 待ち: ${tenpaiStr}`,
             };
         }
         case "RON": {
             if (!state.lastDiscard)
                 return { ...state, message: "\u30ED\u30F3\u3067\u304D\u307E\u305B\u3093" };
-            const winner = action.winner;
-            const winTile = state.lastDiscard.tile;
-            if (!isCompleteHand(state.players[winner].hand, state.players[winner].melds, winTile)) {
-                return { ...state, message: "\u30ED\u30F3\u3067\u304D\u307E\u305B\u3093 (\u548C\u4E86\u5F62\u3067\u306F\u3042\u308A\u307E\u305B\u3093)" };
+            const claimWinners = ronClaimPlayers(state);
+            const winners = claimWinners.length > 0 ? claimWinners : [action.winner];
+            if (winners.length >= 3) {
+                return finishAbortiveDraw(state, "sanchaHou");
             }
-            const score = fullScore({
-                closedTiles: state.players[winner].hand,
-                melds: state.players[winner].melds,
-                winTile: state.lastDiscard.tile,
-                isTsumo: false,
-                roundWind: state.roundWind,
-                playerSeat: winner,
-                dealer: state.dealer,
-                isRiichi: state.players[winner].riichi,
-                riichiSticks: state.riichiSticks,
-                honba: state.honba,
-                ...doraParams(state),
-                isDoubleRiichi: state.players[winner].doubleRiichi,
-                isIppatsu: state.players[winner].ippatsu,
-                isHaitei: false,
-                isHoutei: !state.lastDiscardWasChankan && state.wall.length === 0,
-                isRinshan: false,
-                isChankan: state.lastDiscardWasChankan,
-            });
-            if (!score) {
+            const scores = winners.map((winner) => ronScore(state, winner));
+            if (scores.some((score) => score === null)) {
                 return { ...state, message: "\u30B9\u30B3\u30A2\u8A08\u7B97\u3067\u304D\u307E\u305B\u3093" };
             }
+            if (winners.length === 2) {
+                const doubleWinners = winners as [number, number];
+                const doubleScores = scores as [ScoreResult, ScoreResult];
+                const riichiReceiver = doubleWinners[0];
+                const players1 = applyDoubleRonPayments(state.players, doubleWinners, state.lastDiscard.player, doubleScores, riichiReceiver, state.riichiSticks);
+                const names = doubleWinners.map((winner) => winner === 0 ? "\u3042\u306A\u305F" : `プレイヤー${winner + 1}`).join("\u30FB");
+                const scoreSummary = doubleScores.map((score) => `${score.fu}符${score.han}飜 ${score.score}点`).join(" / ");
+                return finishRound(state, players1, riichiReceiver, false, doubleWinners.includes(state.dealer), doubleScores[0], `${names}がダブロン! ${scoreSummary}`);
+            }
+            const winner = winners[0]!;
+            const score = scores[0]!;
             const players1 = applyRonPayment(state.players, winner, state.lastDiscard.player, score, state.riichiSticks);
             const yakuStr = score.yaku.map((y) => y.name).join("\u30FB");
             return finishRound(state, players1, winner, false, winner === state.dealer, score, `${winner === 0 ? "\u3042\u306A\u305F" : `プレイヤー${winner + 1}`}がロン! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`);
@@ -995,6 +1387,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 isHoutei: false,
                 isRinshan: state.lastDrawWasRinshan,
                 isChankan: false,
+                isTenhou: player === state.dealer && !state.firstTurnInterrupted && state.players[player].discards.length === 0,
+                isChiihou: player !== state.dealer && !state.firstTurnInterrupted && state.players[player].discards.length === 0 && state.players[player].melds.length === 0,
             });
             if (!score) {
                 return { ...state, message: "\u30B9\u30B3\u30A2\u8A08\u7B97\u3067\u304D\u307E\u305B\u3093" };
@@ -1003,6 +1397,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
             const yakuStr = score.yaku.map((y) => y.name).join("\u30FB");
             return finishRound(state, updatedTsPlayers, player, false, player === state.dealer, score, `${player === 0 ? "\u3042\u306A\u305F" : `プレイヤー${player + 1}`}がツモ和了! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`);
         }
+        case "DECLARE_KYUUSHU_KYUUHAI":
+            if (!canDeclareKyuushuKyuuhai(state, action.player)) {
+                return { ...state, message: "\u4E5D\u7A2E\u4E5D\u724C\u3067\u304D\u307E\u305B\u3093" };
+            }
+            return finishAbortiveDraw(state, "kyuushuKyuuhai");
         case "END_ROUND":
             return finishRound(state, state.players, null, true, false, null, action.message ?? "\u5C40\u7D42\u4E86");
         default:
@@ -1063,6 +1462,10 @@ export function createInitialState(random?: (() => number) | null): GameState {
         pendingRinshan: false,
         lastDrawWasRinshan: false,
         lastDiscardWasChankan: false,
+        kuikaeProhibitedTiles: [],
+        firstTurnInterrupted: false,
+        pendingAbortiveDraw: null,
+        calledDiscardKinds: emptyCalledDiscardKinds(),
     };
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1141,5 +1544,21 @@ export function normalizeGameState(value: unknown): GameState {
         pendingRinshan: typeof value.pendingRinshan === "boolean" ? value.pendingRinshan : base.pendingRinshan,
         lastDrawWasRinshan: typeof value.lastDrawWasRinshan === "boolean" ? value.lastDrawWasRinshan : base.lastDrawWasRinshan,
         lastDiscardWasChankan: typeof value.lastDiscardWasChankan === "boolean" ? value.lastDiscardWasChankan : base.lastDiscardWasChankan,
+        kuikaeProhibitedTiles: Array.isArray(value.kuikaeProhibitedTiles)
+            ? (value.kuikaeProhibitedTiles as Tile[])
+            : base.kuikaeProhibitedTiles,
+        firstTurnInterrupted: typeof value.firstTurnInterrupted === "boolean"
+            ? value.firstTurnInterrupted
+            : base.firstTurnInterrupted,
+        pendingAbortiveDraw: value.pendingAbortiveDraw === "kyuushuKyuuhai" ||
+            value.pendingAbortiveDraw === "suufonRenda" ||
+            value.pendingAbortiveDraw === "suuchaRiichi" ||
+            value.pendingAbortiveDraw === "suukanSanra" ||
+            value.pendingAbortiveDraw === "sanchaHou"
+            ? value.pendingAbortiveDraw
+            : base.pendingAbortiveDraw,
+        calledDiscardKinds: Array.isArray(value.calledDiscardKinds)
+            ? (value.calledDiscardKinds as string[][])
+            : base.calledDiscardKinds,
     };
 }

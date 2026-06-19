@@ -1,0 +1,5 @@
+# Expand east-only game with common riichi rules
+
+The next rules expansion keeps the game east-only and adopts common riichi-mahjong behavior that affects round progression and legal actions: abortive draws for kyuushu kyuuhai, suufon renda, suucha riichi, suukan sanra, and sancha hou; double ron; nagashi mangan; kuikae prohibition; and bust-out ending below 0 points. We deliberately keep uma/oka settlement, chombo, and responsibility payments out of this expansion because they add separate settlement or penalty models beyond the current raw-point match flow.
+
+Double ron is allowed, with the discarder paying both winners and riichi sticks awarded to the winner nearest the discarder in turn order. Sancha hou is treated as an abortive draw. Abortive draws add one honba, carry riichi sticks, and pass the dealership.

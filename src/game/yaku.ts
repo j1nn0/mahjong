@@ -6,6 +6,8 @@ import { tileToIndex, tilesToCounts } from './agari.js';
 export enum YakuId {
   Riichi = 'riichi',
   Ippatsu = 'ippatsu',
+  Tenhou = 'tenhou',
+  Chiihou = 'chiihou',
   MenzenTsumo = 'mentsumo',
   Tanyao = 'tanyao',
   Pinfu = 'pinfu',
@@ -58,6 +60,8 @@ interface YakuMeta {
 const YAKU_META: Record<string, YakuMeta> = {
   [YakuId.Riichi]:        { name: 'リーチ', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
   [YakuId.Ippatsu]:       { name: '一発', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
+  [YakuId.Tenhou]:        { name: '天和', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
+  [YakuId.Chiihou]:       { name: '地和', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
   [YakuId.MenzenTsumo]:   { name: '門前清自摸和', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
   [YakuId.Tanyao]:        { name: '断么九', hanClosed: 1, hanOpen: 1, yakuman: false, doubleYakuman: false },
   [YakuId.Pinfu]:         { name: '平和', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
@@ -281,6 +285,8 @@ export interface DetectYakuParams {
   isHoutei: boolean;
   isRinshan: boolean;
   isChankan: boolean;
+  isTenhou?: boolean;
+  isChiihou?: boolean;
 }
 
 /**
@@ -296,6 +302,22 @@ export function detectYaku(
   const isClosed = melds.every(m => m.type === MeldType.ClosedKan);
   const resultingYaku: YakuResult[] = [];
   const handGroups: HandGroups = { groups: [], isClosed, winTile, isTsumo };
+
+  function metaResult(id: YakuId): YakuResult {
+    const meta = YAKU_META[id];
+    if (!meta) throw new Error(`Unknown yaku: ${id}`);
+    const han = isClosed ? meta.hanClosed : meta.hanOpen;
+    return { id, name: meta.name, han, yakuman: meta.yakuman, doubleYakuman: meta.doubleYakuman };
+  }
+
+  if (params.isTenhou) {
+    resultingYaku.push(metaResult(YakuId.Tenhou));
+    return { yaku: resultingYaku, groups: handGroups }; // Standalone
+  }
+  if (params.isChiihou) {
+    resultingYaku.push(metaResult(YakuId.Chiihou));
+    return { yaku: resultingYaku, groups: handGroups }; // Standalone
+  }
 
   // ── Riichi (checked before special pattern early returns) ──
   if (isRiichi) {
@@ -562,12 +584,6 @@ export function detectYaku(
 
 // ── Helpers ───────────────────────────────────────────────────────
 
-function metaResult(id: YakuId): YakuResult {
-  const meta = YAKU_META[id];
-  if (!meta) throw new Error(`Unknown yaku: ${id}`);
-  return { id, name: meta.name, han: 0, yakuman: meta.yakuman, doubleYakuman: meta.doubleYakuman };
-}
-
 function indexToTile(index: number, red = false): Tile {
   if (index < 9)  return { suit: Suit.Man,   value: (index + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
   if (index < 18) return { suit: Suit.Pin,   value: (index - 9 + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
@@ -581,8 +597,7 @@ function indexToTile(index: number, red = false): Tile {
 export function totalHan(yaku: readonly YakuResult[]): number {
   return yaku.reduce((s, y) => {
     if (y.yakuman) return s;
-    const meta = YAKU_META[y.id];
-    return s + (meta?.hanClosed ?? meta?.hanOpen ?? 0);
+    return s + y.han;
   }, 0);
 }
 

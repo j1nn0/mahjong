@@ -6,6 +6,7 @@ import {
   sortClaimsByPriority,
   processAiTurn,
   normalizeGameState,
+  canDeclareKyuushuKyuuhai,
 } from "./GameState.js";
 import type { GameState, PlayerData } from "./GameState.js";
 import { MeldType, Suit, type Tile, type Meld } from "../game/types.js";
@@ -22,6 +23,15 @@ function s(v: number): Tile {
 }
 function ton(): Tile {
   return { suit: Suit.Wind, value: 0 };
+}
+function nan(): Tile {
+  return { suit: Suit.Wind, value: 1 };
+}
+function sha(): Tile {
+  return { suit: Suit.Wind, value: 2 };
+}
+function pei(): Tile {
+  return { suit: Suit.Wind, value: 3 };
 }
 
 function makeTestPlayer(hand: Tile[]): PlayerData {
@@ -57,7 +67,7 @@ function twoSidedTanyao13WaitingP4(): Tile[] {
 
 function startedState(overrides: Partial<GameState> = {}): GameState {
   return {
-    ...gameReducer(createInitialState(), { type: "START_GAME" }),
+    ...gameReducer(createInitialState(() => 0), { type: "START_GAME" }),
     ...overrides,
   };
 }
@@ -196,6 +206,185 @@ describe("collectClaims", () => {
   });
 });
 
+describe("abortive draws", () => {
+  it("allows kyuushu kyuuhai on the first turn", () => {
+    const hand = [
+      m(1), m(9), p(1), p(9), s(1), s(9),
+      ton(), nan(), sha(), pei(),
+      m(2), m(3), m(4), m(5),
+    ];
+    const state = startedState({
+      dealer: 0,
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer(hand),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    expect(canDeclareKyuushuKyuuhai(state, 0)).toBe(true);
+
+    const after = gameReducer(state, { type: "DECLARE_KYUUSHU_KYUUHAI", player: 0 });
+
+    expect(after.phase).toBe("roundEnded");
+    expect(after.honba).toBe(state.honba + 1);
+    expect(after.dealer).toBe(1);
+    expect(after.message).toBe("途中流局: 九種九牌");
+  });
+
+  it("processAiTurn declares kyuushu kyuuhai for computer players", () => {
+    const hand = [
+      m(1), m(9), p(1), p(9), s(1), s(9),
+      ton(), nan(), sha(), pei(),
+      p(2), p(3), p(4), p(5),
+    ];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer(hand),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "DECLARE_KYUUSHU_KYUUHAI", player: 1 });
+  });
+
+  it("ends the round on suufon renda after the fourth matching wind discard", () => {
+    const state = startedState({
+      dealer: 0,
+      currentPlayer: 3,
+      players: makePlayers(
+        { ...makeTestPlayer([]), discards: [ton()] },
+        { ...makeTestPlayer([]), discards: [ton()] },
+        { ...makeTestPlayer([]), discards: [ton()] },
+        makeTestPlayer([ton()]),
+      ),
+    });
+
+    const after = gameReducer(state, { type: "DISCARD", player: 3, tile: ton() });
+
+    expect(after.phase).toBe("roundEnded");
+    expect(after.honba).toBe(state.honba + 1);
+    expect(after.dealer).toBe(1);
+    expect(after.message).toBe("途中流局: 四風連打");
+  });
+
+  it("ends the round after the fourth riichi declaration passes", () => {
+    const state = startedState({
+      dealer: 0,
+      currentPlayer: 3,
+      riichiSticks: 3,
+      players: makePlayers(
+        { ...makeTestPlayer([]), riichi: true, discards: [m(1)], points: 24000 },
+        { ...makeTestPlayer([]), riichi: true, discards: [m(2)], points: 24000 },
+        { ...makeTestPlayer([]), riichi: true, discards: [m(3)], points: 24000 },
+        makeTestPlayer([...twoSidedTanyao13WaitingP4(), m(9)]),
+      ),
+    });
+
+    const after = gameReducer(state, { type: "DECLARE_RIICHI", player: 3, discardTile: m(9) });
+
+    expect(after.phase).toBe("roundEnded");
+    expect(after.riichiSticks).toBe(4);
+    expect(after.players[3].points).toBe(24000);
+    expect(after.message).toBe("途中流局: 四家立直");
+  });
+
+  it("ends the round on suukan sanra after the post-kan discard passes", () => {
+    const kan1: Meld = { type: MeldType.ClosedKan, tiles: [m(1), m(1), m(1), m(1)] };
+    const kan2: Meld = { type: MeldType.ClosedKan, tiles: [p(1), p(1), p(1), p(1)] };
+    const kan3: Meld = { type: MeldType.Kan, tiles: [s(1), s(1), s(1), s(1)], calledTile: s(1) };
+    const kan4: Meld = { type: MeldType.Kan, tiles: [m(9), m(9), m(9), m(9)], calledTile: m(9) };
+    const state = startedState({
+      dealer: 0,
+      currentPlayer: 0,
+      pendingAbortiveDraw: "suukanSanra",
+      players: makePlayers(
+        { ...makeTestPlayer([p(5)]), melds: [kan1, kan2] },
+        { ...makeTestPlayer([]), melds: [kan3, kan4] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const after = gameReducer(state, { type: "DISCARD", player: 0, tile: p(5) });
+
+    expect(after.phase).toBe("roundEnded");
+    expect(after.message).toBe("途中流局: 四槓散了");
+  });
+});
+
+describe("nagashi mangan", () => {
+  it("scores nagashi mangan as a mangan tsumo on exhaustive draw", () => {
+    const state = startedState({
+      dealer: 0,
+      currentPlayer: 0,
+      wall: [],
+      players: makePlayers(
+        { ...makeTestPlayer([]), discards: [m(1), p(9), s(1), ton()] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const after = gameReducer(state, { type: "DRAW", player: 0 });
+
+    expect(after.phase).toBe("roundEnded");
+    expect(after.winner).toBe(0);
+    expect(after.honba).toBe(1);
+    expect(after.dealer).toBe(0);
+    expect(after.players[0].points - state.players[0].points).toBe(12000);
+    expect(after.message).toBe("あなたが流し満貫!");
+  });
+
+  it("does not award nagashi mangan when any discard was called", () => {
+    const state = startedState({
+      currentPlayer: 0,
+      wall: [],
+      calledDiscardKinds: [["m:1"], [], [], []],
+      players: makePlayers(
+        { ...makeTestPlayer([]), discards: [m(1), p(9), s(1), ton()] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const after = gameReducer(state, { type: "DRAW", player: 0 });
+
+    expect(after.message).not.toContain("流し満貫");
+  });
+
+  it("allows multiple nagashi mangan winners", () => {
+    const state = startedState({
+      dealer: 0,
+      currentPlayer: 0,
+      wall: [],
+      players: makePlayers(
+        { ...makeTestPlayer([]), discards: [m(1), p(9), s(1), ton()] },
+        { ...makeTestPlayer([]), discards: [m(9), p(1), s(9), nan()] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const after = gameReducer(state, { type: "DRAW", player: 0 });
+
+    expect(after.phase).toBe("roundEnded");
+    expect(after.winner).toBe(0);
+    expect(after.players[0].points - state.players[0].points).toBe(12000 - 4000);
+    expect(after.players[1].points - state.players[1].points).toBe(8000 - 4000);
+    expect(after.message).toBe("あなた・プレイヤー2が流し満貫!");
+  });
+});
+
 describe("sortClaimsByPriority", () => {
   it("puts ron before pon and chi", () => {
     const players = makePlayers(
@@ -252,6 +441,7 @@ describe("gameReducer claims", () => {
       makeTestPlayer([]),
     );
     const state = startedState({
+      dealer: 3,
       phase: "claiming",
       currentPlayer: 1,
       players,
@@ -265,6 +455,123 @@ describe("gameReducer claims", () => {
     expect(afterRon.phase).toBe("roundEnded");
     expect(afterRon.winner).toBe(0);
     expect(pointsTotal(afterRon)).toBe(beforeTotal);
+  });
+
+  it("processes double ron and awards riichi sticks to the nearest winner", () => {
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer(winningTanyao13()),
+      { ...makeTestPlayer([]), points: 24000 },
+    );
+    const state = startedState({
+      dealer: 3,
+      phase: "claiming",
+      currentPlayer: 1,
+      riichiSticks: 1,
+      deadWall: { tiles: [], doraCount: 0 },
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: sortClaimsByPriority(collectClaims(p(5), 1, players), 1),
+    });
+
+    const beforeTotal = pointsTotal(state);
+    const beforeP0 = state.players[0].points;
+    const beforeP2 = state.players[2].points;
+    const afterRon = gameReducer(state, { type: "RON", winner: 0 });
+
+    expect(afterRon.phase).toBe("roundEnded");
+    expect(afterRon.winner).toBe(2);
+    expect(afterRon.riichiSticks).toBe(0);
+    expect(afterRon.players[2].points - beforeP2).toBe(afterRon.players[0].points - beforeP0 + 1000);
+    expect(pointsTotal(afterRon)).toBe(beforeTotal);
+    expect(afterRon.message).toContain("ダブロン");
+  });
+
+  it("treats triple ron as sancha hou abortive draw without payments", () => {
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer(winningTanyao13()),
+    );
+    const state = startedState({
+      dealer: 0,
+      phase: "claiming",
+      currentPlayer: 1,
+      riichiSticks: 2,
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: sortClaimsByPriority(collectClaims(p(5), 1, players), 1),
+    });
+
+    const beforePoints = state.players.map((player) => player.points);
+    const afterRon = gameReducer(state, { type: "RON", winner: 0 });
+
+    expect(afterRon.phase).toBe("roundEnded");
+    expect(afterRon.honba).toBe(state.honba + 1);
+    expect(afterRon.dealer).toBe(1);
+    expect(afterRon.riichiSticks).toBe(2);
+    expect(afterRon.players.map((player) => player.points)).toEqual(beforePoints);
+    expect(afterRon.message).toBe("途中流局: 三家和");
+  });
+
+  it("rejects immediate suji kuikae after chi and clears the restriction after a legal discard", () => {
+    const players = makePlayers(
+      makeTestPlayer([m(4)]),
+      makeTestPlayer([m(1), m(2), m(3), m(8), p(1), p(2), p(3)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const claimOptions = collectClaims(m(4), 0, players);
+    const chiIndex = claimOptions.findIndex((c) =>
+      c.type === "chi" &&
+      c.player === 1 &&
+      c.tiles.some((tile) => tile.suit === Suit.Man && tile.value === 2) &&
+      c.tiles.some((tile) => tile.suit === Suit.Man && tile.value === 3)
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 0,
+      players,
+      lastDiscard: { tile: m(4), player: 0 },
+      claimOptions,
+    });
+
+    const afterChi = gameReducer(state, { type: "CHI", player: 1, optionIndex: chiIndex });
+    const rejected = gameReducer(afterChi, { type: "DISCARD", player: 1, tile: m(1) });
+
+    expect(rejected.currentPlayer).toBe(1);
+    expect(rejected.players[1].discards).toHaveLength(0);
+    expect(rejected.message).toBe("食い替え禁止: 🀇 は切れません");
+
+    const accepted = gameReducer(rejected, { type: "DISCARD", player: 1, tile: m(8) });
+    expect(accepted.currentPlayer).toBe(2);
+    expect(accepted.players[1].discards).toEqual([m(8)]);
+    expect(accepted.kuikaeProhibitedTiles).toHaveLength(0);
+  });
+
+  it("rejects immediate same-tile kuikae after pon", () => {
+    const players = makePlayers(
+      makeTestPlayer([p(5)]),
+      makeTestPlayer([]),
+      makeTestPlayer([p(5), p(5), p(5), m(1), m(2), m(3)]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 0,
+      players,
+      lastDiscard: { tile: p(5), player: 0 },
+      claimOptions: collectClaims(p(5), 0, players),
+    });
+
+    const afterPon = gameReducer(state, { type: "PON", player: 2 });
+    const rejected = gameReducer(afterPon, { type: "DISCARD", player: 2, tile: p(5) });
+
+    expect(rejected.currentPlayer).toBe(2);
+    expect(rejected.players[2].discards).toHaveLength(0);
+    expect(rejected.message).toBe("食い替え禁止: 🀝 は切れません");
   });
 
   it("AI chooses ron before other claims", () => {
@@ -521,6 +828,93 @@ describe("gameReducer claims", () => {
     expect(afterKan.players[0].melds[0]?.type).toBe(MeldType.Poon);
     expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount);
     expect(afterKan.message).toContain("リーチ中");
+  });
+});
+
+describe("tobi (bankruptcy) ending", () => {
+  it("ends the match when a player's points drop below 0 after RON", () => {
+    const start = startedState({
+      dealer: 0,
+      roundNumber: 1,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 500 }, // Will drop below 0
+        { ...makeTestPlayer(winningTanyao13()), points: 25000 }, // Mangan ron is 8000
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      lastDiscard: { tile: p(5), player: 0 },
+      honba: 0,
+      riichiSticks: 0,
+    });
+
+    const afterRon = gameReducer(start, { type: "RON", winner: 1 });
+
+    expect(afterRon.phase).toBe("ended");
+    expect(afterRon.players[0].points).toBeLessThan(0);
+  });
+
+  it("ends the match when a player's points drop below 0 after TSUMO", () => {
+    const start = startedState({
+      dealer: 0,
+      roundNumber: 1,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 1000 }, // Will drop below 0
+        { ...makeTestPlayer([...winningTanyao13(), p(5)]), points: 25000 }, // Mangan tsumo child is 2000/4000
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      lastDrawnTile: p(5),
+      currentPlayer: 1,
+      honba: 0,
+      riichiSticks: 0,
+    });
+
+    const afterTsumo = gameReducer(start, { type: "TSUMO", player: 1 });
+
+    expect(afterTsumo.phase).toBe("ended");
+    expect(afterTsumo.players[0].points).toBeLessThan(0);
+  });
+
+  it("ends the match when a player's points drop below 0 after DRAW (tenpai payments)", () => {
+    const start = startedState({
+      dealer: 0,
+      roundNumber: 1,
+      wall: [], // Force draw
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 500 }, // No tenpai, pays 1000 or more
+        { ...makeTestPlayer(winningTanyao13()), points: 25000 }, // Tenpai
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      currentPlayer: 0,
+      lastDrawnTile: p(1),
+    });
+
+    const afterDraw = gameReducer(start, { type: "DRAW", player: 0 });
+
+    expect(afterDraw.phase).toBe("ended");
+    expect(afterDraw.players[0].points).toBeLessThan(0);
+  });
+
+  it("does not end the match if a player's points are exactly 0", () => {
+    const start = startedState({
+      dealer: 0,
+      roundNumber: 1,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 2000 }, // Matches exactly the ron payment
+        { ...makeTestPlayer(winningTanyao13()), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      lastDiscard: { tile: p(5), player: 0 },
+      honba: 0,
+      riichiSticks: 0,
+      deadWall: { tiles: [s(9)], doraCount: 1 }, // Dora is s(1), which is not in the winning hand
+    });
+
+    const afterRon = gameReducer(start, { type: "RON", winner: 1 });
+    expect(afterRon.phase).toBe("roundEnded");
+    expect(afterRon.players[0].points).toBe(0);
   });
 });
 
@@ -1006,7 +1400,7 @@ describe("riichi and win flags", () => {
     const hand = [...twoSidedTanyao13WaitingP4(), winTile];
     const state = startedState({
       currentPlayer: 0,
-      players: makePlayers(makeTestPlayer(hand), makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
+      players: makePlayers({ ...makeTestPlayer(hand), discards: [m(1)] }, makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
       wall: [],
       lastDrawnTile: winTile,
       lastDrawWasRinshan: false,
@@ -1022,7 +1416,7 @@ describe("riichi and win flags", () => {
     const hand = [...twoSidedTanyao13WaitingP4(), winTile];
     const state = startedState({
       currentPlayer: 0,
-      players: makePlayers(makeTestPlayer(hand), makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
+      players: makePlayers({ ...makeTestPlayer(hand), discards: [m(1)] }, makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
       wall: [s(1)],
       lastDrawnTile: winTile,
       lastDrawWasRinshan: true,
