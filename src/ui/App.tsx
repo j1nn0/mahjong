@@ -18,11 +18,10 @@ import {
 } from "../state/selectors.js";
 import { saveGame, loadGame, clearSave } from "../state/persistence.js";
 import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
-import { formatTile, getDoraIndicators, tileToUnicode } from "../game/tiles.js";
-import { isWinningHand, tilesToCounts } from "../game/agari.js";
+import { formatTile, getDoraIndicators } from "../game/tiles.js";
+import { isWinningHand, tilesToCounts, calcShanten } from "../game/agari.js";
 import { type Meld, type Tile, type Discard } from "../game/types.js";
 import { DiscardView, tileColor } from "./DiscardView.js";
-import { WaitsInfo } from "./WaitsInfo.js";
 import { KeyLegend } from "./KeyLegend.js";
 
 const AI_DELAY = parseInt(process.env.MAHJONG_AI_DELAY ?? "600", 10);
@@ -74,12 +73,11 @@ const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, riichi, isHum
   return (
     <Box>
       {tiles.map((tile, i) => {
-        const char = tileToUnicode(tile);
         const isSelected = i === selectedIndex;
         return (
           <Box key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`} width={3}>
-            <Text color={tileColor(tile)} inverse={isSelected}>
-              {char}
+            <Text color={tileColor(tile)} underline={isSelected} bold={isSelected}>
+              {formatTile(tile)}
             </Text>
           </Box>
         );
@@ -95,7 +93,7 @@ interface MeldViewProps {
 }
 
 const MeldView: React.FC<MeldViewProps> = ({ melds }) => {
-  if (melds.length === 0) return <Text dimColor>--</Text>;
+  if (melds.length === 0) return null;
   return (
     <Text>
       {melds.map((meld, i) => (
@@ -113,6 +111,46 @@ const MeldView: React.FC<MeldViewProps> = ({ melds }) => {
   );
 };
 
+// ── Turn info ──────────────────────────────────────────────────────
+
+interface TurnInfoProps {
+  wallRemaining: number;
+  riichiSticks: number;
+}
+
+const TurnInfo: React.FC<TurnInfoProps> = ({ wallRemaining, riichiSticks }) => {
+  const turns = Math.floor(wallRemaining / 4);
+  return (
+    <Box marginTop={1}>
+      <Text bold>
+        残り{turns}巡 (山:{wallRemaining}枚) | リーチ棒:{riichiSticks}
+      </Text>
+    </Box>
+  );
+};
+
+// ── Turn log ───────────────────────────────────────────────────────
+
+interface TurnLogViewProps {
+  entries: readonly { player: number; tile: Tile }[];
+}
+
+const TurnLogView: React.FC<TurnLogViewProps> = ({ entries }) => {
+  if (entries.length === 0) return null;
+  return (
+    <Box marginY={1}>
+      <Text dimColor>直近: </Text>
+      {entries.map((entry, i) => (
+        <Text key={i} color={tileColor(entry.tile)}>
+          P{entry.player + 1}
+          {formatTile(entry.tile)}
+          {"  "}
+        </Text>
+      ))}
+    </Box>
+  );
+};
+
 // ── Dora display ─────────────────────────────────────────────────
 
 interface DoraViewProps {
@@ -127,8 +165,10 @@ const DoraView: React.FC<DoraViewProps> = ({ state }) => {
       <Text bold>ドラ表示: </Text>
       {indicators.length > 0 ? (
         indicators.map((tile, i) => (
-          <Box key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`} width={3}>
-            <Text color={tileColor(tile)}>{formatTile(tile)}</Text>
+          <Box key={`dora-${tile.suit}-${tile.value}-${i}`} width={3}>
+            <Text bold color={tileColor(tile)}>
+              {formatTile(tile)}
+            </Text>
           </Box>
         ))
       ) : (
@@ -177,7 +217,7 @@ const OpponentInfo: React.FC<OpponentInfoProps> = ({
 }) => {
   const riichi = discards.some((d) => d.isRiichi);
   const label = relativeLabel ? `${relativeLabel} ${wind}` : wind;
-  const labelText = `${label} (${points}点) ${riichi ? "(リーチ)" : ""} 手牌:${tileCount}`;
+  const labelText = `${label} (${points}点) 手牌:${tileCount}`;
   const leftPadding =
     centerIn && centerIn > stringDisplayWidth(labelText)
       ? Math.floor((centerIn - stringDisplayWidth(labelText)) / 2)
@@ -187,12 +227,18 @@ const OpponentInfo: React.FC<OpponentInfoProps> = ({
     <Box flexDirection="column" marginBottom={1}>
       <Text bold>
         {pad}
-        {labelText}
+        {labelText}{" "}
+        {riichi && (
+          <Text bold color="yellow">
+            リーチ
+          </Text>
+        )}
       </Text>
-      <Box marginLeft={leftPadding}>
-        <Text>副露: </Text>
-        <MeldView melds={melds} />
-      </Box>
+      {melds.length > 0 && (
+        <Box marginLeft={leftPadding}>
+          <MeldView melds={melds} />
+        </Box>
+      )}
       <Box marginLeft={leftPadding}>
         <DiscardView discards={discards} terminalWidth={terminalWidth} compact={compact} />
       </Box>
@@ -237,32 +283,15 @@ interface ActionBarProps {
   canRiichi: boolean;
   canKan: boolean;
   canKyuushu: boolean;
-  message: string;
-  waits: Tile[];
-  showWaits: boolean;
 }
 
-const ActionBar: React.FC<ActionBarProps> = ({
-  canTsumo,
-  canRiichi,
-  canKan,
-  canKyuushu,
-  message,
-  waits,
-  showWaits,
-}) => {
+const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canKyuushu }) => {
   return (
-    <Box flexDirection="column" marginTop={1}>
-      <Box>
-        {canTsumo && <Text color="green"> [T]ツモ </Text>}
-        {canRiichi && <Text color="yellow"> [R]リーチ </Text>}
-        {canKan && <Text color="cyan"> [K]カン </Text>}
-        {canKyuushu && <Text color="magenta"> [Y]九種九牌 </Text>}
-      </Box>
-      <WaitsInfo waits={waits} showNames={showWaits} />
-      <Box marginTop={1}>
-        <Text>{message}</Text>
-      </Box>
+    <Box marginTop={1}>
+      {canTsumo && <Text color="green"> [T]ツモ </Text>}
+      {canRiichi && <Text color="yellow"> [R]リーチ </Text>}
+      {canKan && <Text color="cyan"> [K]カン </Text>}
+      {canKyuushu && <Text color="magenta"> [Y]九種九牌 </Text>}
     </Box>
   );
 };
@@ -276,8 +305,8 @@ const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
-  const [showWaits, setShowWaits] = useState(false);
   const processingRef = useRef(false);
+  const turnLogRef = useRef<{ player: number; tile: Tile }[]>([]);
   const [startupMode, setStartupMode] = useState<"loading" | "choose" | "ready">("loading");
   const [savedState, setSavedState] = useState<GameState | null>(null);
   const { stdout } = useStdout();
@@ -308,6 +337,12 @@ const App: React.FC = () => {
       saveGame(state);
     }
   }, [state, startupMode]);
+  // Turn log tracking
+  useEffect(() => {
+    if (!state.lastDiscard) return;
+    const entry = { player: state.lastDiscard.player, tile: state.lastDiscard.tile };
+    turnLogRef.current = [...turnLogRef.current.slice(-4), entry];
+  }, [state.lastDiscard]);
   // Auto-draw for human
   useEffect(() => {
     if (startupMode !== "ready") return;
@@ -386,6 +421,12 @@ const App: React.FC = () => {
   const humanCanKan = canHumanKan(state, selectedIndex);
   const humanCanKyuushu = canHumanKyuushu(state);
   const humanWaits = computeHumanWaits(state, selectedIndex);
+  const humanAllTiles = [
+    ...state.players[0].hand,
+    ...state.players[0].melds.flatMap((m) => m.tiles),
+  ];
+  const humanShanten =
+    state.phase === "playing" && state.currentPlayer === 0 ? calcShanten(humanAllTiles) : -1;
 
   // Keyboard input
   useInput((input, key) => {
@@ -490,12 +531,6 @@ const App: React.FC = () => {
       if (input === "t") {
         dispatch({ type: "TSUMO", player: 0 });
       }
-      return;
-    }
-
-    // 待ち牌表示トグル
-    if (input === "w") {
-      setShowWaits((prev) => !prev);
       return;
     }
 
@@ -709,18 +744,23 @@ const App: React.FC = () => {
           </Box>
           <Text dimColor>{"─".repeat(40)}</Text>
           <Box marginTop={1} marginBottom={1}>
-            <Text>捨て牌: </Text>
+            <Text bold>捨て牌: </Text>
             {state.lastDiscard ? (
               <Text color={tileColor(state.lastDiscard.tile)}>
                 {formatTile(state.lastDiscard.tile)}
               </Text>
-            ) : null}
+            ) : (
+              <Text dimColor>まだありません</Text>
+            )}
           </Box>
+          <TurnLogView entries={turnLogRef.current} />
           <Text dimColor>{"─".repeat(40)}</Text>
-          <Text bold>
-            {WIND_NAMES[state.players[0].wind]}家 (あなた) ({state.players[0].points}点)
-          </Text>
-          <Box>
+          <Box marginTop={1} marginBottom={1}>
+            <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
+            <Text dimColor>({state.players[0].points}点) </Text>
+            {state.players[0].riichi && <Text color="yellow">リーチ中 </Text>}
+          </Box>
+          <Box marginBottom={1}>
             <Text bold>あなたの捨て牌: </Text>
             <DiscardView
               discards={state.players[0].discards}
@@ -728,21 +768,34 @@ const App: React.FC = () => {
               compact={false}
             />
           </Box>
-          <Box>
-            <Text bold>あなたの副露: </Text>
-            <MeldView melds={state.players[0].melds} />
-          </Box>
+          {state.players[0].melds.length > 0 && (
+            <Box marginBottom={1}>
+              <Text bold>あなたの副露: </Text>
+              <MeldView melds={state.players[0].melds} />
+            </Box>
+          )}
           <HandView
             tiles={hand}
             selectedIndex={selectedIndex}
             riichi={state.players[0].riichi}
             isHuman={true}
           />
+          <TurnInfo wallRemaining={state.wall.length} riichiSticks={state.riichiSticks} />
+          {state.currentPlayer === 0 && state.phase === "claiming" && (
+            <Box>
+              {humanShanten >= 0 && <Text>シャンテン数:{humanShanten} </Text>}
+              {humanWaits.length > 0 && (
+                <Text color="blue">
+                  待ち:{humanWaits.length}種 [{humanWaits.map(formatTile).join(" ")}]
+                </Text>
+              )}
+            </Box>
+          )}
           {humanOptions.length > 0 && (
             <ClaimMenu options={humanOptions} selectedIndex={claimSelectedIndex} />
           )}
           <Box marginTop={1}>
-            <Text>{state.message}</Text>
+            <Text bold>{state.message}</Text>
           </Box>
           <KeyLegend phase="claiming" />
         </Box>
@@ -813,11 +866,7 @@ const App: React.FC = () => {
             <Text dimColor>まだありません</Text>
           )}
         </Box>
-        <Box>
-          <Text dimColor>
-            山残り: {state.wall.length} / リーチ棒: {state.riichiSticks}
-          </Text>
-        </Box>
+        <TurnLogView entries={turnLogRef.current} />
         <Text dimColor>{"─".repeat(40)}</Text>
         <Box marginTop={1} marginBottom={1}>
           <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
@@ -832,25 +881,38 @@ const App: React.FC = () => {
             compact={false}
           />
         </Box>
-        <Box marginBottom={1}>
-          <Text bold>あなたの副露: </Text>
-          <MeldView melds={state.players[0].melds} />
-        </Box>
+        {state.players[0].melds.length > 0 && (
+          <Box marginBottom={1}>
+            <Text bold>あなたの副露: </Text>
+            <MeldView melds={state.players[0].melds} />
+          </Box>
+        )}
         <HandView
           tiles={hand}
           selectedIndex={selectedIndex}
           riichi={state.players[0].riichi}
           isHuman={true}
         />
+        <TurnInfo wallRemaining={state.wall.length} riichiSticks={state.riichiSticks} />
         <ActionBar
           canTsumo={humanCanTsumo}
           canRiichi={humanCanRiichi}
           canKan={humanCanKan}
           canKyuushu={humanCanKyuushu}
-          message={state.message}
-          waits={humanWaits}
-          showWaits={showWaits}
         />
+        {state.currentPlayer === 0 && state.phase === "playing" && (
+          <Box>
+            {humanShanten >= 0 && <Text>シャンテン数:{humanShanten} </Text>}
+            {humanWaits.length > 0 && (
+              <Text color="blue">
+                待ち:{humanWaits.length}種 [{humanWaits.map(formatTile).join(" ")}]
+              </Text>
+            )}
+          </Box>
+        )}
+        <Box marginTop={1}>
+          <Text bold>{state.message}</Text>
+        </Box>
         <KeyLegend phase="playing" />
       </Box>
     </Box>
