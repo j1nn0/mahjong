@@ -293,6 +293,33 @@ describe('fullScore', () => {
     expect(score!.payment.from.some((f) => f.player === 2)).toBe(true);
     expect(score!.payment.from.some((f) => f.player === 3)).toBe(true);
   });
+
+  it('assigns payment from loser for Ron', () => {
+    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), m(6), m(6)];
+    const score = fullScore({
+      closedTiles: closed13,
+      melds: [],
+      winTile: p(4),
+      isTsumo: false,
+      roundWind: 0,
+      playerSeat: 1,
+      dealer: 0,
+      loser: 2, // Add loser property here
+      isRiichi: true,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+    } as any); // Use 'as any' temporarily until types are updated
+    expect(score).not.toBeNull();
+    expect(score!.payment.from.length).toBe(1);
+    expect(score!.payment.from[0]!.player).toBe(2);
+    expect(score!.payment.from[0]!.amount).toBeGreaterThan(0);
+  });
 });
 
 describe('pair fu stacking', () => {

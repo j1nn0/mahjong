@@ -246,7 +246,7 @@ const ClaimMenu: React.FC<ClaimMenuProps> = ({ options, selectedIndex }) => {
           </Box>
         );
       })}
-      <Text dimColor>L:ロン C:チー P:ポン K:カン Space:パス ←→:選択</Text>
+      <Text dimColor>L:ロン C:チー P:ポン K:カン Space/Esc:パス ←→:選択</Text>
     </Box>
   );
 };
@@ -406,11 +406,27 @@ const App: React.FC = () => {
     return !p.riichi && p.points >= 1000;
   })();
   const humanCanAnkan = (() => {
-    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi)
-      return false;
+    if (state.phase !== "playing" || state.currentPlayer !== 0) return false;
     const tile = hand[selectedIndex];
     if (!tile) return false;
-    return hand.filter((t) => tileKindKey(t) === tileKindKey(tile)).length >= 4;
+    const count = hand.filter((t) => tileKindKey(t) === tileKindKey(tile)).length;
+    if (count < 4) return false;
+
+    if (state.players[0].riichi) {
+      const p = state.players[0];
+      const currentWaits = findWaits(removeOneTile(p.hand, tile), p.melds);
+      const newHand = p.hand.filter((t) => tileKindKey(t) !== tileKindKey(tile));
+      const newMeld: Meld = { type: MeldType.ClosedKan, tiles: p.hand.filter((t) => tileKindKey(t) === tileKindKey(tile)) };
+      const newWaits = findWaits(newHand, [...p.melds, newMeld]);
+
+      if (
+        currentWaits.length !== newWaits.length ||
+        !currentWaits.every((cw) => newWaits.includes(cw))
+      ) {
+        return false;
+      }
+    }
+    return true;
   })();
   const humanCanKakan = (() => {
     if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi)
@@ -519,7 +535,7 @@ const App: React.FC = () => {
           return;
         }
       }
-      if (input === " " || input === "q") {
+      if (input === " " || key.escape || input === "q") {
         dispatch({ type: "PASS_CLAIM" });
         return;
       }

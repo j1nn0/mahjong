@@ -103,6 +103,7 @@ export function calculateScore(
   honba: number,
   doraIndicators?: readonly Tile[],
   uraDoraIndicators?: readonly Tile[],
+  loser?: number,
 ): ScoreResult {
   // Yakuman
   const yakumanCount = totalYakuman(detectedYaku);
@@ -115,6 +116,7 @@ export function calculateScore(
       basePoints,
       riichiSticks,
       honba,
+      loser,
     );
     return {
       yaku: detectedYaku,
@@ -160,7 +162,7 @@ export function calculateScore(
     basePoints = MANGAN;
   }
 
-  const payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba);
+  const payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba, loser);
   const score = payment.winnerGets;
 
   return {
@@ -183,13 +185,15 @@ function calcPayment(
   basePoints: number,
   riichiSticks: number,
   honba: number,
+  loser?: number,
 ): Payment {
   const riichiBonus = riichiSticks * 1000;
 
   if (!isTsumo) {
     const multiplier = winner === dealer ? 6 : 4;
     const amount = Math.ceil((basePoints * multiplier) / 100) * 100 + honba * 300;
-    return { from: [], winnerGets: amount + riichiBonus };
+    const from = loser !== undefined ? [{ player: loser, amount }] : [];
+    return { from, winnerGets: amount + riichiBonus };
   }
 
   if (winner === dealer) {
@@ -233,6 +237,7 @@ export interface ScoreParams {
   uraDoraIndicators?: readonly Tile[];
   isTenhou?: boolean;
   isChiihou?: boolean;
+  loser?: number;
 }
 
 export function fullScore(params: ScoreParams): ScoreResult | null {
@@ -269,5 +274,6 @@ export function fullScore(params: ScoreParams): ScoreResult | null {
     params.honba,
     params.doraIndicators,
     params.uraDoraIndicators,
+    params.loser,
   );
 }

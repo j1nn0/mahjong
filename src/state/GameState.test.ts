@@ -350,9 +350,32 @@ describe("abortive draws", () => {
     expect(action).toEqual({ type: "DECLARE_RIICHI", player: 1, discardTile: p(9) });
   });
 
-  it("processAiTurn does not declare ankan if in riichi", () => {
+  it("processAiTurn declares ankan if in riichi and wait does not change", () => {
+    // wait is 9p, drawing 8s
+    const hand = [m(1), m(1), m(1), p(2), p(3), p(4), s(5), s(6), s(7), s(8), s(8), s(8), s(8), p(9)];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(hand), riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action?.type).toBe("ANKAN");
+  });
+
+  it("processAiTurn does not declare ankan if in riichi and wait changes", () => {
+    // 44456m -> wait 4,7m
     const hand = [
-      m(1), m(1), m(1), m(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), s(1), s(2),
+      m(4), m(4), m(4), m(5), m(6),
+      p(1), p(1), p(1),
+      p(2), p(2), p(2),
+      p(3), p(3), p(3),
+      m(4),
     ];
     const state = startedState({
       currentPlayer: 1,
@@ -431,6 +454,30 @@ describe("abortive draws", () => {
 
     expect(after.phase).toBe("roundEnded");
     expect(after.message).toBe("途中流局: 四槓散了");
+  });
+});
+
+describe("exhaustive draw (ryuukyoku)", () => {
+  it("applies noten bappu (3000 points) from noten to tenpai players", () => {
+    const state = startedState({
+      currentPlayer: 0,
+      wall: [],
+      players: makePlayers(
+        makeTestPlayer(twoSidedTanyao13()), // tenpai
+        makeTestPlayer(twoSidedTanyao13()), // tenpai
+        makeTestPlayer([m(1), m(1), m(9), m(9), p(1), p(1), p(9), p(9), s(1), s(1), ton(), nan(), sha()]), // noten
+        makeTestPlayer([m(1), m(1), m(9), m(9), p(1), p(1), p(9), p(9), s(1), s(1), ton(), nan(), sha()]), // noten
+      ),
+    });
+
+    const after = gameReducer(state, { type: "DRAW", player: 0 });
+
+    expect(after.phase).toBe("roundEnded");
+    expect(after.message).toContain("聴牌: あなた・P2");
+    expect(after.players[0].points - state.players[0].points).toBe(1500);
+    expect(after.players[1].points - state.players[1].points).toBe(1500);
+    expect(after.players[2].points - state.players[2].points).toBe(-1500);
+    expect(after.players[3].points - state.players[3].points).toBe(-1500);
   });
 });
 
@@ -891,20 +938,10 @@ describe("gameReducer claims", () => {
       players: makePlayers(
         {
           ...makeTestPlayer([
-            m(1),
-            m(1),
-            m(1),
-            m(1),
-            m(2),
-            m(3),
-            m(4),
-            p(2),
-            p(3),
-            p(4),
-            s(2),
-            s(3),
-            s(4),
-            p(5),
+            m(4), m(4), m(4), m(4), m(5), m(6),
+            p(1), p(1), p(1),
+            p(2), p(2), p(2),
+            p(3), p(3),
           ]),
           riichi: true,
         },
@@ -914,11 +951,11 @@ describe("gameReducer claims", () => {
       ),
     });
 
-    const afterKan = gameReducer(state, { type: "ANKAN", player: 0, tile: m(1) });
+    const afterKan = gameReducer(state, { type: "ANKAN", player: 0, tile: m(4) });
 
     expect(afterKan.players[0].melds).toHaveLength(0);
     expect(afterKan.deadWall.doraCount).toBe(state.deadWall.doraCount);
-    expect(afterKan.message).toContain("リーチ中");
+    expect(afterKan.message).toContain("待ちが変わるため");
   });
 
   it("processes kakan by upgrading an existing pon meld", () => {
@@ -1501,6 +1538,50 @@ describe("riichi and win flags", () => {
 
     expect(afterRiichi.players[0].riichi).toBe(false);
     expect(afterRiichi.riichiSticks).toBe(state.riichiSticks);
+  });
+
+  it("allows ANKAN during riichi if wait does not change", () => {
+    // Hand: 111m 234p 567s 8888s 9p -> wait 9p
+    const hand = [m(1), m(1), m(1), p(2), p(3), p(4), s(5), s(6), s(7), s(8), s(8), s(8), s(8), p(9)];
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer(hand), riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterKan = gameReducer(state, { type: "ANKAN", player: 0, tile: s(8) });
+
+    expect(afterKan.message).not.toContain("暗槓できません");
+    expect(afterKan.players[0].melds.length).toBe(1);
+    expect(afterKan.players[0].melds[0]!.type).toBe(MeldType.ClosedKan);
+    expect(afterKan.pendingRinshan).toBe(true);
+  });
+
+  it("forbids ANKAN during riichi if wait changes", () => {
+    const hand = [
+      m(4), m(4), m(4), m(4), m(5), m(6),
+      p(1), p(1), p(1),
+      p(2), p(2), p(2),
+      p(3), p(3),
+    ];
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer(hand), riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterKan = gameReducer(state, { type: "ANKAN", player: 0, tile: m(4) });
+
+    expect(afterKan.message).toContain("待ちが変わるため");
+    expect(afterKan.players[0].melds.length).toBe(0);
   });
 
   it("passes double riichi and ippatsu to ron scoring", () => {

@@ -577,6 +577,7 @@ function ronScore(state: GameState, winner: number): ScoreResult | null {
         isHoutei: !state.lastDiscardWasChankan && state.wall.length === 0,
         isRinshan: false,
         isChankan: state.lastDiscardWasChankan,
+        loser: state.lastDiscard.player,
     });
 }
 function ronClaimPlayers(state: GameState): number[] {
@@ -890,12 +891,25 @@ export function processAiTurn(state: GameState): {
         if (canScoreTsumo(state, state.currentPlayer, winTile)) {
             return { state, action: { type: "TSUMO", player: state.currentPlayer } };
         }
-        if (!player.riichi) {
-            for (const tile of player.hand) {
-                if (player.hand.filter((t) => isSameTileKind(t, tile)).length >= 4) {
+        for (const tile of player.hand) {
+            if (player.hand.filter((t) => isSameTileKind(t, tile)).length >= 4) {
+                if (player.riichi) {
+                    const currentWaits = findWaits(removeOneTile(player.hand, tile), player.melds);
+                    const newHand = sortHand(removeTileKind(player.hand, tile, 4));
+                    const newMeld: Meld = { type: MeldType.ClosedKan, tiles: player.hand.filter((t) => isSameTileKind(t, tile)) };
+                    const newWaits = findWaits(newHand, [...player.melds, newMeld]);
+                    if (
+                        currentWaits.length === newWaits.length &&
+                        currentWaits.every((cw) => newWaits.includes(cw))
+                    ) {
+                        return { state, action: { type: "ANKAN", player: state.currentPlayer, tile } };
+                    }
+                } else {
                     return { state, action: { type: "ANKAN", player: state.currentPlayer, tile } };
                 }
             }
+        }
+        if (!player.riichi) {
             for (const tile of player.hand) {
                 if (player.melds.some((m) => m.type === MeldType.Poon && m.calledTile && isSameTileKind(m.calledTile, tile))) {
                     return { state, action: { type: "KAKAN", player: state.currentPlayer, tile } };
@@ -1213,11 +1227,24 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         }
         case "ANKAN": {
             const player = state.players[action.player];
-            if (player.riichi)
-                return { ...state, message: "\u6697\u69D3\u3067\u304D\u307E\u305B\u3093 (\u30EA\u30FC\u30C1\u4E2D)" };
             const tiles = matchingTileKind(player.hand, action.tile);
             if (tiles.length < 4)
-                return { ...state, message: "\u6697\u69D3\u3067\u304D\u307E\u305B\u3093" };
+                return { ...state, message: "暗槓できません" };
+
+            if (player.riichi) {
+                const currentWaits = findWaits(removeOneTile(player.hand, action.tile), player.melds);
+                const newHand = sortHand(removeTileKind(player.hand, action.tile, 4));
+                const newMeld: Meld = { type: MeldType.ClosedKan, tiles: tiles.slice(0, 4) };
+                const newMelds = [...player.melds, newMeld];
+                const newWaits = findWaits(newHand, newMelds);
+
+                if (
+                    currentWaits.length !== newWaits.length ||
+                    !currentWaits.every((cw) => newWaits.includes(cw))
+                ) {
+                    return { ...state, message: "暗槓できません (待ちが変わるため)" };
+                }
+            }
             const meld: Meld = { type: MeldType.ClosedKan, tiles: tiles.slice(0, 4) };
             const updatedPlayer = updPlayer(player, {
                 hand: sortHand(removeTileKind(player.hand, action.tile, 4)),
