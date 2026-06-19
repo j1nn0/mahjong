@@ -9,7 +9,7 @@ import {
   canDeclareKyuushuKyuuhai,
 } from "./GameState.js";
 import type { GameState, PlayerData } from "./GameState.js";
-import { MeldType, Suit, type Tile, type Meld } from "../game/types.js";
+import { MeldType, Suit, type Tile, type Meld, type Discard, PlayerWind } from "../game/types.js";
 import { YakuId } from "../game/yaku.js";
 
 function m(v: number): Tile {
@@ -38,7 +38,7 @@ function makeTestPlayer(hand: Tile[]): PlayerData {
   return {
     hand,
     melds: [],
-    discards: [],
+    discards: [] as Discard[],
     riichi: false,
     doubleRiichi: false,
     ippatsu: false,
@@ -95,7 +95,10 @@ describe("collectClaims", () => {
 
   it("does not detect ron when the player is furiten from their own discard", () => {
     const players = makePlayers(
-      { ...makeTestPlayer(winningTanyao13()), discards: [p(5)] },
+      {
+        ...makeTestPlayer(winningTanyao13()),
+        discards: [{ tile: p(5), isRiichi: false, player: 0 as PlayerWind }],
+      },
       makeTestPlayer([p(5)]),
       makeTestPlayer([]),
       makeTestPlayer([]),
@@ -421,7 +424,11 @@ describe("abortive draws", () => {
     const state = startedState({
       currentPlayer: 1,
       players: makePlayers(
-        { ...makeTestPlayer([]), riichi: true, discards: [p(9)] },
+        {
+          ...makeTestPlayer([]),
+          riichi: true,
+          discards: [{ tile: p(9), isRiichi: true, player: 0 as PlayerWind }],
+        },
         makeTestPlayer(hand),
         makeTestPlayer([]),
         makeTestPlayer([]),
@@ -739,9 +746,18 @@ describe("abortive draws", () => {
       dealer: 0,
       currentPlayer: 3,
       players: makePlayers(
-        { ...makeTestPlayer([]), discards: [ton()] },
-        { ...makeTestPlayer([]), discards: [ton()] },
-        { ...makeTestPlayer([]), discards: [ton()] },
+        {
+          ...makeTestPlayer([]),
+          discards: [{ tile: ton(), isRiichi: false, player: 0 as PlayerWind }],
+        },
+        {
+          ...makeTestPlayer([]),
+          discards: [{ tile: ton(), isRiichi: false, player: 1 as PlayerWind }],
+        },
+        {
+          ...makeTestPlayer([]),
+          discards: [{ tile: ton(), isRiichi: false, player: 2 as PlayerWind }],
+        },
         makeTestPlayer([ton()]),
       ),
     });
@@ -760,9 +776,24 @@ describe("abortive draws", () => {
       currentPlayer: 3,
       riichiSticks: 3,
       players: makePlayers(
-        { ...makeTestPlayer([]), riichi: true, discards: [m(1)], points: 24000 },
-        { ...makeTestPlayer([]), riichi: true, discards: [m(2)], points: 24000 },
-        { ...makeTestPlayer([]), riichi: true, discards: [m(3)], points: 24000 },
+        {
+          ...makeTestPlayer([]),
+          riichi: true,
+          discards: [{ tile: m(1), isRiichi: true, player: 0 as PlayerWind }],
+          points: 24000,
+        },
+        {
+          ...makeTestPlayer([]),
+          riichi: true,
+          discards: [{ tile: m(2), isRiichi: true, player: 1 as PlayerWind }],
+          points: 24000,
+        },
+        {
+          ...makeTestPlayer([]),
+          riichi: true,
+          discards: [{ tile: m(3), isRiichi: true, player: 2 as PlayerWind }],
+          points: 24000,
+        },
         makeTestPlayer([...twoSidedTanyao13WaitingP4(), m(9)]),
       ),
     });
@@ -858,7 +889,15 @@ describe("nagashi mangan", () => {
       currentPlayer: 0,
       wall: [],
       players: makePlayers(
-        { ...makeTestPlayer([]), discards: [m(1), p(9), s(1), ton()] },
+        {
+          ...makeTestPlayer([]),
+          discards: [
+            { tile: m(1), isRiichi: false, player: 0 as PlayerWind },
+            { tile: p(9), isRiichi: false, player: 0 as PlayerWind },
+            { tile: s(1), isRiichi: false, player: 0 as PlayerWind },
+            { tile: ton(), isRiichi: false, player: 0 as PlayerWind },
+          ],
+        },
         makeTestPlayer([]),
         makeTestPlayer([]),
         makeTestPlayer([]),
@@ -881,7 +920,15 @@ describe("nagashi mangan", () => {
       wall: [],
       calledDiscardKinds: [["m:1"], [], [], []],
       players: makePlayers(
-        { ...makeTestPlayer([]), discards: [m(1), p(9), s(1), ton()] },
+        {
+          ...makeTestPlayer([]),
+          discards: [
+            { tile: m(1), isRiichi: false, player: 0 as PlayerWind },
+            { tile: p(9), isRiichi: false, player: 0 as PlayerWind },
+            { tile: s(1), isRiichi: false, player: 0 as PlayerWind },
+            { tile: ton(), isRiichi: false, player: 0 as PlayerWind },
+          ],
+        },
         makeTestPlayer([]),
         makeTestPlayer([]),
         makeTestPlayer([]),
@@ -899,8 +946,24 @@ describe("nagashi mangan", () => {
       currentPlayer: 0,
       wall: [],
       players: makePlayers(
-        { ...makeTestPlayer([]), discards: [m(1), p(9), s(1), ton()] },
-        { ...makeTestPlayer([]), discards: [m(9), p(1), s(9), nan()] },
+        {
+          ...makeTestPlayer([]),
+          discards: [
+            { tile: m(1), isRiichi: false, player: 0 as PlayerWind },
+            { tile: p(9), isRiichi: false, player: 0 as PlayerWind },
+            { tile: s(1), isRiichi: false, player: 0 as PlayerWind },
+            { tile: ton(), isRiichi: false, player: 0 as PlayerWind },
+          ],
+        },
+        {
+          ...makeTestPlayer([]),
+          discards: [
+            { tile: m(9), isRiichi: false, player: 1 as PlayerWind },
+            { tile: p(1), isRiichi: false, player: 1 as PlayerWind },
+            { tile: s(9), isRiichi: false, player: 1 as PlayerWind },
+            { tile: nan(), isRiichi: false, player: 1 as PlayerWind },
+          ],
+        },
         makeTestPlayer([]),
         makeTestPlayer([]),
       ),
@@ -1081,7 +1144,9 @@ describe("gameReducer claims", () => {
 
     const accepted = gameReducer(rejected, { type: "DISCARD", player: 1, tile: m(8) });
     expect(accepted.currentPlayer).toBe(2);
-    expect(accepted.players[1].discards).toEqual([m(8)]);
+    expect(accepted.players[1].discards).toEqual([
+      { tile: m(8), isRiichi: false, player: accepted.players[1].wind },
+    ]);
     expect(accepted.kuikaeProhibitedTiles).toHaveLength(0);
   });
 
@@ -2041,7 +2106,10 @@ describe("riichi and win flags", () => {
     const state = startedState({
       currentPlayer: 0,
       players: makePlayers(
-        { ...makeTestPlayer(hand), discards: [m(1)] },
+        {
+          ...makeTestPlayer(hand),
+          discards: [{ tile: m(1), isRiichi: false, player: 0 as PlayerWind }],
+        },
         makeTestPlayer([]),
         makeTestPlayer([]),
         makeTestPlayer([]),
@@ -2062,7 +2130,10 @@ describe("riichi and win flags", () => {
     const state = startedState({
       currentPlayer: 0,
       players: makePlayers(
-        { ...makeTestPlayer(hand), discards: [m(1)] },
+        {
+          ...makeTestPlayer(hand),
+          discards: [{ tile: m(1), isRiichi: false, player: 0 as PlayerWind }],
+        },
         makeTestPlayer([]),
         makeTestPlayer([]),
         makeTestPlayer([]),
@@ -2232,7 +2303,11 @@ describe("open-hand winning detection", () => {
     const hand = [m(3), m(4), m(5), p(2), p(3), p(4), s(2), s(3), s(4), p(5)];
     const players = makePlayers(
       makeTestPlayer([]),
-      { ...makeTestPlayer(hand), melds: [meld], discards: [p(5)] },
+      {
+        ...makeTestPlayer(hand),
+        melds: [meld],
+        discards: [{ tile: p(5), isRiichi: false, player: 1 as PlayerWind }],
+      },
       makeTestPlayer([]),
       makeTestPlayer([]),
     );
@@ -2246,7 +2321,11 @@ describe("open-hand winning detection", () => {
     const hand = [m(3), m(4), m(5), p(2), p(3), p(4), s(2), s(3), s(4), p(5)];
     const players = makePlayers(
       makeTestPlayer([]),
-      { ...makeTestPlayer(hand), melds: [meld], discards: [s(1)] },
+      {
+        ...makeTestPlayer(hand),
+        melds: [meld],
+        discards: [{ tile: s(1), isRiichi: false, player: 1 as PlayerWind }],
+      },
       makeTestPlayer([]),
       makeTestPlayer([]),
     );
@@ -2304,5 +2383,103 @@ describe("normalizeGameState", () => {
     expect(restored.players[0].discards).toEqual([]);
     expect(restored.players[0].temporaryFuriten).toBe(false);
     expect(restored.players[0].riichiFuriten).toBe(false);
+  });
+
+  it("converts old-format discards (Tile[]) to Discard[] with isRiichi=false", () => {
+    const restored = normalizeGameState({
+      players: [
+        { hand: [m(1)], discards: [p(1), p(2)], points: 24000 },
+        { hand: [m(2)], points: 26000 },
+        { hand: [m(3)], points: 25000 },
+        { hand: [m(4)], points: 25000 },
+      ],
+      phase: "playing",
+      honba: 2,
+      riichiSticks: 1,
+      currentPlayer: 1,
+      wall: [p(3), p(4)],
+      deadWall: { tiles: [s(1)], doraCount: 1 },
+    } as never);
+
+    expect(restored.players[0].discards).toHaveLength(2);
+    expect(restored.players[0].discards[0]!.tile).toEqual(p(1));
+    expect(restored.players[0].discards[0]!.isRiichi).toBe(false);
+    expect(restored.players[0].discards[1]!.tile).toEqual(p(2));
+    expect(restored.players[0].discards[1]!.isRiichi).toBe(false);
+  });
+});
+
+describe("riichi discard marking", () => {
+  it("sets isRiichi=false on normal DISCARD and isRiichi=true on DECLARE_RIICHI", () => {
+    // Normal discard by player 0
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([
+          m(1),
+          m(2),
+          m(3),
+          m(4),
+          m(5),
+          m(6),
+          m(7),
+          m(8),
+          m(9),
+          p(1),
+          p(2),
+          p(3),
+          p(4),
+          p(5),
+        ]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    // Normal discard
+    const afterDiscard = gameReducer(state, { type: "DISCARD", player: 0, tile: m(5) });
+    expect(afterDiscard.players[0].discards).toHaveLength(1);
+    expect(afterDiscard.players[0].discards[0]!.tile).toEqual(m(5));
+    expect(afterDiscard.players[0].discards[0]!.isRiichi).toBe(false);
+    expect(afterDiscard.players[0].discards[0]!.player).toBe(state.players[0].wind);
+
+    // DECLARE_RIICHI: player 1 has tenpai hand with >= 1000 points
+    const tenpaiHand = [
+      m(1),
+      m(2),
+      m(3),
+      p(4),
+      p(5),
+      p(6),
+      s(7),
+      s(8),
+      s(9),
+      p(2),
+      p(3),
+      s(9),
+      s(9),
+    ];
+    const handWithDraw = [...tenpaiHand, s(1)];
+    const riichiState = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(handWithDraw), points: 1000 },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const afterRiichi = gameReducer(riichiState, {
+      type: "DECLARE_RIICHI",
+      player: 1,
+      discardTile: s(1),
+    });
+    const lastDiscard =
+      afterRiichi.players[1].discards[afterRiichi.players[1].discards.length - 1]!;
+    expect(lastDiscard.tile).toEqual(s(1));
+    expect(lastDiscard.isRiichi).toBe(true);
+    expect(lastDiscard.player).toBe(riichiState.players[1].wind);
   });
 });

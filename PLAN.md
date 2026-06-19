@@ -13,7 +13,7 @@
 - ウマ・オカは扱わず、順位は素点で決める
 - 責任払いは今回扱わない
 
-## 実装済み（Phase 1〜29）
+## 実装済み（Phase 1〜30）
 
 - [x] 用語整理・ADR・README 整備
 - [x] 食い替え禁止
@@ -33,10 +33,11 @@
 - [x] 天和処理の重複排除（リファクタリング）
 - [x] processAiTurn のテスト追加
 - [x] AIの副露宣言
+- [x] リーチ宣言牌のマーキング
 
-最新の検証結果（Phase 29 完了時点）:
+最新の検証結果（Phase 30 完了時点）:
 
-- `rtk pnpm test`: 10 files / 193 tests passed
+- `rtk pnpm test`: 11 files / 203 tests passed
 - `rtk pnpm exec tsc --noEmit`: exit 0
 
 ---
@@ -218,14 +219,21 @@
 
 受け入れ条件:
 
-- [ ] `DiscardView` でリーチ宣言牌（`isRiichi: true`）を `inverse` などで強調表示する
-- [ ] `Discard` 型の情報が `DiscardView` まで伝わるよう Props を修正する
-- [ ] リーチ宣言牌が視覚的に他の牌と区別できることを確認する
+- [x] `DiscardView` でリーチ宣言牌（`isRiichi: true`）を `inverse` などで強調表示する
+- [x] `Discard` 型の情報が `DiscardView` まで伝わるよう Props を修正する
+- [x] リーチ宣言牌が視覚的に他の牌と区別できることを確認する
+
+最新の検証結果（Phase 30 完了時点）:
+
+- `rtk pnpm test`: 11 files / 203 tests passed
+- `rtk pnpm exec tsc --noEmit`: exit 0
 
 想定変更ファイル:
 
 - `src/ui/App.tsx`（`DiscardView`, `OpponentInfo`）
-- `src/game/types.ts`（必要なら）
+- `src/state/GameState.ts`（`PlayerData.discards` を `Discard[]` 化）
+- `src/ui/DiscardView.tsx`（新規）
+- `src/ui/DiscardView.test.tsx`（新規）
 
 ---
 
@@ -235,13 +243,24 @@
 
 受け入れ条件:
 
-- [ ] `DiscardView` に最大表示枚数（例: 直近 18 枚）を設ける
-- [ ] 上限を超えた場合は古い捨て牌を省略し `...` などで件数を示す
-- [ ] 表示上限を `terminalWidth` に応じて動的に計算する
+- [x] `DiscardView` に最大表示枚数（例: 直近 18 枚）を設ける
+- [x] 上限を超えた場合は古い捨て牌を省略し `...` などで件数を示す
+- [x] 表示上限を `terminalWidth` に応じて動的に計算する
 
 想定変更ファイル:
 
-- `src/ui/App.tsx`（`DiscardView`）
+- `src/ui/DiscardView.tsx`: `DiscardViewProps` に `terminalWidth` / `compact` 追加、`computeMaxDisplayCount` 追加、省略ロジック実装
+- `src/ui/App.tsx`: `OpponentInfoProps` に `terminalWidth` / `compact` 追加、全 `OpponentInfo` / `DiscardView` に渡すよう修正
+- `src/ui/DiscardView.test.tsx`: `computeMaxDisplayCount` テスト、省略 visual/structure テスト追加
+
+検証結果 (2026-06-19):
+
+```
+✓ src/ui/DiscardView.test.tsx (22 tests) 20ms
+Test Files  11 passed (11)
+     Tests  217 passed (217)
+$ tsc --noEmit (no output)
+```
 
 ---
 

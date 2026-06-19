@@ -6,14 +6,14 @@ import {
   normalizeGameState,
   processAiTurn,
   canDeclareKyuushuKyuuhai,
-  removeOneTile,
   findWaits,
 } from "../state/GameState.js";
 import { saveGame, loadGame, clearSave } from "../state/persistence.js";
 import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
 import { formatTile, getDoraIndicators, tileToUnicode } from "../game/tiles.js";
 import { isWinningHand, tilesToCounts, indexToTile } from "../game/agari.js";
-import { type Meld, MeldType, type Tile, Suit } from "../game/types.js";
+import { type Meld, MeldType, type Tile, type Discard } from "../game/types.js";
+import { DiscardView, tileColor } from "./DiscardView.js";
 
 // ── Display helpers ────────────────────────────────────────────────
 
@@ -37,21 +37,17 @@ function stringDisplayWidth(str: string): number {
   return width;
 }
 
-// ── Color helpers ──────────────────────────────────────────────────
+// ── Color helpers (re-exported from DiscardView) ────────────────────
+// tileColor is imported from ./DiscardView.js
 
-function tileColor(tile: Tile): string {
-  switch (tile.suit) {
-    case Suit.Man:
-      return "red";
-    case Suit.Pin:
-      return "blue";
-    case Suit.Sou:
-      return "green";
-    case Suit.Wind:
-      return "magenta";
-    case Suit.Dragon:
-      return "yellow";
-  }
+// ── Local helpers (not exported from GameState) ──────────────────────
+
+function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
+  const idx = hand.findIndex(
+    (t) => t.suit === tile.suit && t.value === tile.value && !!t.red === !!tile.red,
+  );
+  if (idx === -1) return [...hand];
+  return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
 }
 
 // ── Hand display ───────────────────────────────────────────────────
@@ -87,27 +83,6 @@ const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, riichi, isHum
         );
       })}
     </Box>
-  );
-};
-
-// ── Discard river ──────────────────────────────────────────────────
-
-interface DiscardViewProps {
-  discards: readonly Tile[];
-  riichi: boolean;
-}
-
-const DiscardView: React.FC<DiscardViewProps> = ({ discards, riichi }) => {
-  if (discards.length === 0) return <Text dimColor>--</Text>;
-  return (
-    <Text>
-      {riichi ? "(リーチ) " : ""}
-      {discards.map((t, i) => (
-        <Text key={i} color={tileColor(t)}>
-          {formatTile(t)}{" "}
-        </Text>
-      ))}
-    </Text>
   );
 };
 
@@ -178,12 +153,13 @@ const claimLabel = (option: ClaimOption): string => {
 interface OpponentInfoProps {
   wind: string;
   relativeLabel?: string;
-  discards: readonly Tile[];
+  discards: readonly Discard[];
   melds: readonly Meld[];
-  riichi: boolean;
   points: number;
   tileCount: number;
   centerIn?: number;
+  terminalWidth: number | undefined;
+  compact: boolean | undefined;
 }
 
 const OpponentInfo: React.FC<OpponentInfoProps> = ({
@@ -191,11 +167,13 @@ const OpponentInfo: React.FC<OpponentInfoProps> = ({
   relativeLabel,
   discards,
   melds,
-  riichi,
   points,
   tileCount,
   centerIn,
+  terminalWidth,
+  compact,
 }) => {
+  const riichi = discards.some((d) => d.isRiichi);
   const label = relativeLabel ? `${relativeLabel} ${wind}` : wind;
   const labelText = `${label} (${points}点) ${riichi ? "(リーチ)" : ""} 手牌:${tileCount}`;
   const leftPadding =
@@ -214,7 +192,7 @@ const OpponentInfo: React.FC<OpponentInfoProps> = ({
         <MeldView melds={melds} />
       </Box>
       <Box marginLeft={leftPadding}>
-        <DiscardView discards={discards} riichi={riichi} />
+        <DiscardView discards={discards} terminalWidth={terminalWidth} compact={compact} />
       </Box>
     </Box>
   );
@@ -262,7 +240,14 @@ interface ActionBarProps {
   waits: Tile[];
 }
 
-const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canKyuushu, message, waits }) => {
+const ActionBar: React.FC<ActionBarProps> = ({
+  canTsumo,
+  canRiichi,
+  canKan,
+  canKyuushu,
+  message,
+  waits,
+}) => {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
@@ -416,7 +401,10 @@ const App: React.FC = () => {
       const p = state.players[0];
       const currentWaits = findWaits(removeOneTile(p.hand, tile), p.melds);
       const newHand = p.hand.filter((t) => tileKindKey(t) !== tileKindKey(tile));
-      const newMeld: Meld = { type: MeldType.ClosedKan, tiles: p.hand.filter((t) => tileKindKey(t) === tileKindKey(tile)) };
+      const newMeld: Meld = {
+        type: MeldType.ClosedKan,
+        tiles: p.hand.filter((t) => tileKindKey(t) === tileKindKey(tile)),
+      };
       const newWaits = findWaits(newHand, [...p.melds, newMeld]);
 
       if (
@@ -442,7 +430,8 @@ const App: React.FC = () => {
   const humanCanKan = humanCanAnkan || humanCanKakan;
   const humanCanKyuushu = canDeclareKyuushuKyuuhai(state, 0);
   const humanWaits = (() => {
-    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi) return [];
+    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi)
+      return [];
     if (turnTileCount(state.players[0]) !== 14) return [];
     const selectedTile = hand[selectedIndex];
     if (!selectedTile) return [];
@@ -620,7 +609,8 @@ const App: React.FC = () => {
 
   if (state.phase === "ended" || state.phase === "roundEnded") {
     const sr = state.lastScoreResult;
-    const sortedPlayers = state.phase === "ended" && state.finalRanking ? state.finalRanking : [0, 1, 2, 3];
+    const sortedPlayers =
+      state.phase === "ended" && state.finalRanking ? state.finalRanking : [0, 1, 2, 3];
     return (
       <Box flexDirection="column" padding={1}>
         <Text bold>{state.message}</Text>
@@ -635,13 +625,14 @@ const App: React.FC = () => {
             <Text dimColor>{"─".repeat(40)}</Text>
             <Box flexDirection="column">
               <Text bold>-- スコア --</Text>
-              <Text>
-                役:{" "}
-                {sr.yaku.map((y) => y.name).join("・")}
-              </Text>
+              <Text>役: {sr.yaku.map((y) => y.name).join("・")}</Text>
               {sr.yakuman > 0 ? (
                 <Text color="red" bold>
-                  {sr.yakuman === 1 ? "役満" : sr.yakuman === 2 ? "ダブル役満" : `役満 ×${sr.yakuman}`}
+                  {sr.yakuman === 1
+                    ? "役満"
+                    : sr.yakuman === 2
+                      ? "ダブル役満"
+                      : `役満 ×${sr.yakuman}`}
                 </Text>
               ) : (
                 <>
@@ -649,7 +640,9 @@ const App: React.FC = () => {
                     飜: {sr.han - sr.doraHan} (役) + {sr.doraHan} (ドラ) = {sr.han}
                   </Text>
                   <Text>符: {sr.fu}</Text>
-                  {sr.limit !== "none" && sr.limit !== "yakuman" && <Text>満貫区分: {sr.limit}</Text>}
+                  {sr.limit !== "none" && sr.limit !== "yakuman" && (
+                    <Text>満貫区分: {sr.limit}</Text>
+                  )}
                 </>
               )}
               <Text>
@@ -682,11 +675,13 @@ const App: React.FC = () => {
                 <Text bold>{history.roundName}</Text>
                 <Text>{history.resultText}</Text>
                 <Text dimColor>
-                  {history.pointChanges.map((pt, pIdx) => {
-                    const name = pIdx === 0 ? "あなた" : `P${pIdx + 1}`;
-                    const sign = pt > 0 ? "+" : "";
-                    return `${name}: ${sign}${pt}`;
-                  }).join(" / ")}
+                  {history.pointChanges
+                    .map((pt, pIdx) => {
+                      const name = pIdx === 0 ? "あなた" : `P${pIdx + 1}`;
+                      const sign = pt > 0 ? "+" : "";
+                      return `${name}: ${sign}${pt}`;
+                    })
+                    .join(" / ")}
                 </Text>
               </Box>
             ))}
@@ -720,11 +715,12 @@ const App: React.FC = () => {
               wind={`${WIND_NAMES[state.players[2].wind]}家`}
               relativeLabel="対面"
               discards={state.players[2].discards}
-              riichi={state.players[2].riichi}
               melds={state.players[2].melds}
               points={state.players[2].points}
               tileCount={state.players[2].hand.length}
               centerIn={terminalWidth - 2}
+              terminalWidth={terminalWidth}
+              compact={false}
             />
           </Box>
           {/* Side players: 上家 (left) and 下家 (right) */}
@@ -734,10 +730,11 @@ const App: React.FC = () => {
                 wind={`${WIND_NAMES[state.players[3].wind]}家`}
                 relativeLabel="上家"
                 discards={state.players[3].discards}
-                riichi={state.players[3].riichi}
                 melds={state.players[3].melds}
                 points={state.players[3].points}
                 tileCount={state.players[3].hand.length}
+                terminalWidth={terminalWidth}
+                compact={true}
               />
             </Box>
             <Box flexDirection="column">
@@ -745,10 +742,11 @@ const App: React.FC = () => {
                 wind={`${WIND_NAMES[state.players[1].wind]}家`}
                 relativeLabel="下家"
                 discards={state.players[1].discards}
-                riichi={state.players[1].riichi}
                 melds={state.players[1].melds}
                 points={state.players[1].points}
                 tileCount={state.players[1].hand.length}
+                terminalWidth={terminalWidth}
+                compact={true}
               />
             </Box>
           </Box>
@@ -767,7 +765,11 @@ const App: React.FC = () => {
           </Text>
           <Box>
             <Text bold>あなたの捨て牌: </Text>
-            <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
+            <DiscardView
+              discards={state.players[0].discards}
+              terminalWidth={terminalWidth}
+              compact={false}
+            />
           </Box>
           <Box>
             <Text bold>あなたの副露: </Text>
@@ -805,11 +807,12 @@ const App: React.FC = () => {
               wind={`${WIND_NAMES[state.players[2].wind]}家`}
               relativeLabel="対面"
               discards={state.players[2].discards}
-              riichi={state.players[2].riichi}
               melds={state.players[2].melds}
               points={state.players[2].points}
               tileCount={state.players[2].hand.length}
               centerIn={terminalWidth - 2}
+              terminalWidth={terminalWidth}
+              compact={false}
             />
           </Box>
           {/* Side players: 上家 (left) and 下家 (right) */}
@@ -819,10 +822,11 @@ const App: React.FC = () => {
                 wind={`${WIND_NAMES[state.players[3].wind]}家`}
                 relativeLabel="上家"
                 discards={state.players[3].discards}
-                riichi={state.players[3].riichi}
                 melds={state.players[3].melds}
                 points={state.players[3].points}
                 tileCount={state.players[3].hand.length}
+                terminalWidth={terminalWidth}
+                compact={true}
               />
             </Box>
             <Box flexDirection="column">
@@ -830,10 +834,11 @@ const App: React.FC = () => {
                 wind={`${WIND_NAMES[state.players[1].wind]}家`}
                 relativeLabel="下家"
                 discards={state.players[1].discards}
-                riichi={state.players[1].riichi}
                 melds={state.players[1].melds}
                 points={state.players[1].points}
                 tileCount={state.players[1].hand.length}
+                terminalWidth={terminalWidth}
+                compact={true}
               />
             </Box>
           </Box>
@@ -863,7 +868,11 @@ const App: React.FC = () => {
         </Box>
         <Box marginBottom={1}>
           <Text bold>あなたの捨て牌: </Text>
-          <DiscardView discards={state.players[0].discards} riichi={state.players[0].riichi} />
+          <DiscardView
+            discards={state.players[0].discards}
+            terminalWidth={terminalWidth}
+            compact={false}
+          />
         </Box>
         <Box marginBottom={1}>
           <Text bold>あなたの副露: </Text>

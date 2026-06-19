@@ -1,4 +1,12 @@
-import { type Tile, type Meld, MeldType, Wind, Suit } from "../game/types.js";
+import {
+  type Tile,
+  type Meld,
+  type Discard,
+  MeldType,
+  Wind,
+  Suit,
+  PlayerWind,
+} from "../game/types.js";
 import {
   buildWall,
   drawFromWall,
@@ -22,7 +30,7 @@ import { aiChooseDiscard } from "../game/ai.js";
 export interface PlayerData {
   hand: readonly Tile[];
   melds: readonly Meld[];
-  discards: readonly Tile[];
+  discards: readonly Discard[];
   riichi: boolean;
   doubleRiichi: boolean;
   ippatsu: boolean;
@@ -181,7 +189,7 @@ function makePlayer(wind: number, points: number): PlayerData {
   return {
     hand: [],
     melds: [],
-    discards: [],
+    discards: [] as Discard[],
     riichi: false,
     doubleRiichi: false,
     ippatsu: false,
@@ -194,7 +202,12 @@ function makePlayer(wind: number, points: number): PlayerData {
 function updPlayer(player: PlayerData, overrides: Partial<PlayerData>): PlayerData {
   return { ...player, ...overrides };
 }
-export function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
+export function removeDiscardByTile(discards: readonly Discard[], tile: Tile): Discard[] {
+  const idx = discards.findIndex((d) => isSameTile(d.tile, tile));
+  if (idx === -1) return [...discards];
+  return [...discards.slice(0, idx), ...discards.slice(idx + 1)];
+}
+function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
   const idx = hand.findIndex((t) => isSameTile(t, tile));
   if (idx === -1) return [...hand];
   return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
@@ -360,7 +373,7 @@ function isFuritenFromOwnDiscards(player: PlayerData): boolean {
   if (player.temporaryFuriten || player.riichiFuriten) return true;
   const waits = new Set(findWaits(player.hand, player.melds));
   if (waits.size === 0) return false;
-  return player.discards.some((tile) => waits.has(tileToIndex(tile)));
+  return player.discards.some((d) => waits.has(tileToIndex(d.tile)));
 }
 /** 現在のstateからドラパラメータを抽出 */
 const doraParams = (state: GameState) => ({
@@ -389,7 +402,7 @@ function isSuufonRenda(
   firstTurnInterrupted: boolean,
 ): boolean {
   if (firstTurnInterrupted || players.some((player) => player.discards.length !== 1)) return false;
-  const firstDiscards = players.map((player) => player.discards[0]!);
+  const firstDiscards = players.map((player) => player.discards[0]!.tile);
   const first = firstDiscards[0]!;
   return first.suit === Suit.Wind && firstDiscards.every((tile) => isSameTileKind(tile, first));
 }
@@ -418,7 +431,7 @@ export function dealRound(
   const players = state.players.map((player, i) => ({
     hand: [],
     melds: [],
-    discards: [],
+    discards: [] as Discard[],
     riichi: false,
     doubleRiichi: false,
     ippatsu: false,
@@ -730,8 +743,8 @@ function nagashiManganWinners(state: GameState): number[] {
     if (player.discards.length === 0) continue;
     const calledKinds = new Set(state.calledDiscardKinds[i] ?? []);
     if (
-      player.discards.every(isYaochu) &&
-      player.discards.every((tile) => !calledKinds.has(tileKindKey(tile)))
+      player.discards.every((d) => isYaochu(d.tile)) &&
+      player.discards.every((d) => !calledKinds.has(tileKindKey(d.tile)))
     ) {
       winners.push(i);
     }
@@ -1032,7 +1045,7 @@ export function processAiTurn(state: GameState): {
         ? state.lastDrawnTile
         : aiChooseDiscard(
             player.hand,
-            state.players.map((p) => p.discards),
+            state.players.map((p) => p.discards.map((d) => d.tile)),
             state.players.map((p) => p.riichi),
             state.kuikaeProhibitedTiles,
             state.players.map((p) => p.melds),
@@ -1053,7 +1066,7 @@ export function processAiTurn(state: GameState): {
   if (player.hand.length > 0) {
     const discard = aiChooseDiscard(
       player.hand,
-      state.players.map((p) => p.discards),
+      state.players.map((p) => p.discards.map((d) => d.tile)),
       state.players.map((p) => p.riichi),
       state.kuikaeProhibitedTiles,
       state.players.map((p) => p.melds),
@@ -1161,7 +1174,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       const fixedHand = removeOneTile(player.hand, action.tile);
       const updatedPlayer = updPlayer(player, {
         hand: sortHand(fixedHand),
-        discards: [...player.discards, action.tile],
+        discards: [
+          ...player.discards,
+          { tile: action.tile, isRiichi: false, player: player.wind as unknown as PlayerWind },
+        ],
         ippatsu: false,
       });
       const newPlayers = updatePlayerInTuple(state.players, action.player, updatedPlayer);
@@ -1269,7 +1285,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.lastDiscard) {
         const dIdx = state.lastDiscard.player;
         const dPlayer = state.players[dIdx];
-        const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
+        const fixedDiscs = removeDiscardByTile(dPlayer.discards, state.lastDiscard.tile);
         newPlayers = updatePlayerInTuple(
           newPlayers,
           dIdx,
@@ -1324,7 +1340,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.lastDiscard) {
         const dIdx = state.lastDiscard.player;
         const dPlayer = state.players[dIdx];
-        const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
+        const fixedDiscs = removeDiscardByTile(dPlayer.discards, state.lastDiscard.tile);
         newPlayers = updatePlayerInTuple(
           newPlayers,
           dIdx,
@@ -1381,7 +1397,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (state.lastDiscard) {
         const dIdx = state.lastDiscard.player;
         const dPlayer = state.players[dIdx];
-        const fixedDiscs = removeOneTile(dPlayer.discards, state.lastDiscard.tile);
+        const fixedDiscs = removeDiscardByTile(dPlayer.discards, state.lastDiscard.tile);
         newPlayers = updatePlayerInTuple(
           newPlayers,
           dIdx,
@@ -1594,7 +1610,14 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         action.player,
         updPlayer(player, {
           hand: sortHand(testHand),
-          discards: [...player.discards, action.discardTile],
+          discards: [
+            ...player.discards,
+            {
+              tile: action.discardTile,
+              isRiichi: true,
+              player: player.wind as unknown as PlayerWind,
+            },
+          ],
           riichi: true,
           doubleRiichi: isDoubleRiichi,
           ippatsu: true,
@@ -1880,7 +1903,14 @@ function normalizePlayer(value: unknown, fallback: PlayerData): PlayerData {
   return {
     hand: Array.isArray(value.hand) ? (value.hand as Tile[]) : fallback.hand,
     melds: Array.isArray(value.melds) ? (value.melds as Meld[]) : fallback.melds,
-    discards: Array.isArray(value.discards) ? (value.discards as Tile[]) : fallback.discards,
+    discards: Array.isArray(value.discards)
+      ? (value.discards as unknown[]).map((d): Discard => {
+          if (d && typeof d === "object" && "tile" in d) {
+            return d as Discard;
+          }
+          return { tile: d as Tile, isRiichi: false, player: 0 as PlayerWind };
+        })
+      : fallback.discards,
     riichi: typeof value.riichi === "boolean" ? value.riichi : fallback.riichi,
     doubleRiichi:
       typeof value.doubleRiichi === "boolean" ? value.doubleRiichi : fallback.doubleRiichi,

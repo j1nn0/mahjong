@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { gameReducer, createInitialState, type GameState, type PlayerData } from "./GameState.js";
-import { MeldType, Suit, Wind, type Tile, type Meld } from "../game/types.js";
+import { MeldType, Suit, Wind, type Tile, type Meld, type Discard } from "../game/types.js";
 
 function m(v: number): Tile {
   return { suit: Suit.Man, value: v as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 };
@@ -13,7 +13,7 @@ function makePlayer(hand: Tile[], melds: Meld[] = [], points = 25000): PlayerDat
   return {
     hand,
     melds,
-    discards: [],
+    discards: [] as Discard[],
     riichi: false,
     doubleRiichi: false,
     ippatsu: false,
