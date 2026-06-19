@@ -90,8 +90,8 @@ This repository has runner-specific context-mode documentation.
 The matching runner-specific context-mode document is mandatory.
 
 - When running in Codex, read `CONTEXT-MODE.codex.md` before using or explaining context-mode.
-- When running in OpenCode, read `CONTEXT_MODE.opencode.md` before using or explaining context-mode.
-- When running in omp(oh-my-pi), read `CONTEXT_MODE.omo.md` before using or explaining context-mode.
-- When running in Antigravity, read `CONTEXT_MODE.agy.md` before using or explaining context-mode.
+- When running in OpenCode, read `CONTEXT-MODE.opencode.md` before using or explaining context-mode.
+- When running in omp(oh-my-pi), read `CONTEXT-MODE.omp.md` before using or explaining context-mode.
+- When running in Antigravity, read `CONTEXT-MODE.agy.md` before using or explaining context-mode.
 - Do not apply the other runner's context-mode document unless explicitly requested.
 - If the current runner cannot be identified, follow only the common rules in this `AGENTS.md` and ask which runner-specific context-mode document should be used when the distinction matters.
