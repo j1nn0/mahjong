@@ -5,14 +5,22 @@ import {
   gameReducer,
   normalizeGameState,
   processAiTurn,
-  canDeclareKyuushuKyuuhai,
-  findWaits,
+  turnTileCount,
 } from "../state/GameState.js";
+import {
+  canHumanTsumo,
+  canHumanRiichi,
+  canHumanKakan,
+  canHumanKan,
+  canHumanKyuushu,
+  computeHumanWaits,
+  getHumanHand,
+} from "../state/selectors.js";
 import { saveGame, loadGame, clearSave } from "../state/persistence.js";
 import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
 import { formatTile, getDoraIndicators, tileToUnicode } from "../game/tiles.js";
-import { isWinningHand, tilesToCounts, indexToTile } from "../game/agari.js";
-import { type Meld, MeldType, type Tile, type Discard } from "../game/types.js";
+import { isWinningHand, tilesToCounts } from "../game/agari.js";
+import { type Meld, type Tile, type Discard } from "../game/types.js";
 import { DiscardView, tileColor } from "./DiscardView.js";
 import { WaitsInfo } from "./WaitsInfo.js";
 import { KeyLegend } from "./KeyLegend.js";
@@ -41,16 +49,6 @@ function stringDisplayWidth(str: string): number {
 
 // ── Color helpers (re-exported from DiscardView) ────────────────────
 // tileColor is imported from ./DiscardView.js
-
-// ── Local helpers (not exported from GameState) ──────────────────────
-
-function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
-  const idx = hand.findIndex(
-    (t) => t.suit === tile.suit && t.value === tile.value && !!t.red === !!tile.red,
-  );
-  if (idx === -1) return [...hand];
-  return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
-}
 
 // ── Hand display ───────────────────────────────────────────────────
 
@@ -271,9 +269,6 @@ const ActionBar: React.FC<ActionBarProps> = ({
 
 const WIND_NAMES = ["東", "南", "西", "北"];
 const roundName = (roundNumber: number) => `東${roundNumber}局`;
-const turnTileCount = (player: GameState["players"][number]) =>
-  player.hand.length + player.melds.reduce((sum, meld) => sum + meld.tiles.length, 0);
-const tileKindKey = (tile: Tile) => `${tile.suit}:${tile.value}`;
 
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
@@ -376,65 +371,13 @@ const App: React.FC = () => {
     }
   }, [state, startupMode]);
 
-  const hand = state.players[0].hand;
-  const humanCanTsumo =
-    state.phase === "playing" &&
-    state.currentPlayer === 0 &&
-    turnTileCount(state.players[0]) === 14;
-  const humanCanRiichi = (() => {
-    if (state.phase !== "playing" || state.currentPlayer !== 0) return false;
-    const p = state.players[0];
-    return !p.riichi && p.points >= 1000;
-  })();
-  const humanCanAnkan = (() => {
-    if (state.phase !== "playing" || state.currentPlayer !== 0) return false;
-    const tile = hand[selectedIndex];
-    if (!tile) return false;
-    const count = hand.filter((t) => tileKindKey(t) === tileKindKey(tile)).length;
-    if (count < 4) return false;
-
-    if (state.players[0].riichi) {
-      const p = state.players[0];
-      const currentWaits = findWaits(removeOneTile(p.hand, tile), p.melds);
-      const newHand = p.hand.filter((t) => tileKindKey(t) !== tileKindKey(tile));
-      const newMeld: Meld = {
-        type: MeldType.ClosedKan,
-        tiles: p.hand.filter((t) => tileKindKey(t) === tileKindKey(tile)),
-      };
-      const newWaits = findWaits(newHand, [...p.melds, newMeld]);
-
-      if (
-        currentWaits.length !== newWaits.length ||
-        !currentWaits.every((cw) => newWaits.includes(cw))
-      ) {
-        return false;
-      }
-    }
-    return true;
-  })();
-  const humanCanKakan = (() => {
-    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi)
-      return false;
-    const tile = hand[selectedIndex];
-    if (!tile) return false;
-    return state.players[0].melds.some(
-      (meld) =>
-        meld.type === MeldType.Poon &&
-        meld.tiles.some((meldTile) => tileKindKey(meldTile) === tileKindKey(tile)),
-    );
-  })();
-  const humanCanKan = humanCanAnkan || humanCanKakan;
-  const humanCanKyuushu = canDeclareKyuushuKyuuhai(state, 0);
-  const humanWaits = (() => {
-    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi)
-      return [];
-    if (turnTileCount(state.players[0]) !== 14) return [];
-    const selectedTile = hand[selectedIndex];
-    if (!selectedTile) return [];
-    const testHand = removeOneTile(hand, selectedTile);
-    const waits = findWaits(testHand, state.players[0].melds);
-    return waits.map((w) => indexToTile(w));
-  })();
+  const hand = getHumanHand(state);
+  const humanCanTsumo = canHumanTsumo(state);
+  const humanCanRiichi = canHumanRiichi(state);
+  const humanCanKakan = canHumanKakan(state, selectedIndex);
+  const humanCanKan = canHumanKan(state, selectedIndex);
+  const humanCanKyuushu = canHumanKyuushu(state);
+  const humanWaits = computeHumanWaits(state, selectedIndex);
 
   // Keyboard input
   useInput((input, key) => {

@@ -207,6 +207,7 @@ export function canDeclareKyuushuKyuuhai(state: GameState, player: number): bool
 function turnTileCount(player: PlayerData): number {
   return player.hand.length + player.melds.reduce((sum, meld) => sum + meld.tiles.length, 0);
 }
+export { turnTileCount };
 
 function canDeclareRiichi(player: PlayerData): boolean {
   return !player.riichi && player.melds.every((meld) => meld.type === MeldType.ClosedKan);

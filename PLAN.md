@@ -347,15 +347,19 @@ $ tsc --noEmit (no output)
 
 受け入れ条件:
 
-- [ ] プレイヤーの操作可能な状態を返すセレクター関数群を `src/state/selectors.ts` に切り出す
-- [ ] `App.tsx` はセレクター関数を呼び出すだけにする
-- [ ] 切り出したセレクター関数のユニットテストを追加する
+- [x] プレイヤーの操作可能な状態を返すセレクター関数群を `src/state/selectors.ts` に切り出す
+- [x] `App.tsx` はセレクター関数を呼び出すだけにする
+- [x] 切り出したセレクター関数のユニットテストを追加する
 
 想定変更ファイル:
 
-- `src/state/selectors.ts`（新規）
-- `src/ui/App.tsx`
-- `src/state/selectors.test.ts`（新規）
+- `src/state/selectors.ts`（新規）✅
+- `src/ui/App.tsx` ✅
+- `src/state/selectors.test.ts`（新規）✅
+
+検証結果:
+- `pnpm test`: 14 files / 251 tests passed
+- `tsc --noEmit`: exit 0
 
 ---
 
