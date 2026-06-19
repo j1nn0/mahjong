@@ -1,4 +1,4 @@
-import { type Tile, Suit } from './types.js';
+import { type Tile, type Meld, Suit } from './types.js';
 import { sortHand } from './tiles.js';
 import { findTenpaiTiles, tileToIndex, indexToTile } from './agari.js';
 
@@ -27,14 +27,33 @@ export function evaluateDanger(
   tile: Tile,
   opponentDiscards: readonly (readonly Tile[])[],
   opponentRiichi: readonly boolean[],
+  opponentMelds?: readonly (readonly Meld[])[],
+  myHand?: readonly Tile[],
 ): number {
   const idx = tileToIndex(tile);
   let worst = 0;
 
+  // 全体で見えている該当牌の枚数をカウントする（字牌の危険度評価用）
+  let visibleCount = 0;
+  for (const discards of opponentDiscards) {
+    visibleCount += discards.filter(d => d.suit === tile.suit && d.value === tile.value).length;
+  }
+  if (myHand) {
+    visibleCount += myHand.filter(h => h.suit === tile.suit && h.value === tile.value).length;
+  }
+  if (opponentMelds) {
+    for (const melds of opponentMelds) {
+      for (const m of melds) {
+        visibleCount += m.tiles.filter(t => t.suit === tile.suit && t.value === tile.value).length;
+      }
+    }
+  }
+
   for (let p = 0; p < opponentDiscards.length; p++) {
     const discards = opponentDiscards[p]!;
     const riichi = opponentRiichi[p] ?? false;
-    const d = dangerForPlayer(tile, idx, discards, riichi);
+    const melds = opponentMelds ? (opponentMelds[p] ?? []) : [];
+    const d = dangerForPlayer(tile, idx, discards, riichi, melds, visibleCount);
     if (d > worst) worst = d;
   }
 
@@ -51,41 +70,86 @@ function dangerForPlayer(
   idx: number,
   discards: readonly Tile[],
   isRiichi: boolean,
+  melds: readonly Meld[],
+  visibleCount: number,
 ): number {
   // Genbutsu: 相手の捨て牌そのもの → 100%安全
   if (discards.some(d => d.suit === tile.suit && d.value === tile.value)) {
     return DANGER_GENBUTSU;
   }
 
-  // リーチ者以外はsuji判定のみ
+  // 1. 相手の副露数に基づくベース危険度の評価
+  let baseDanger = isRiichi ? DANGER_HIGH : DANGER_LOW;
   if (!isRiichi) {
-    return DANGER_LOW;
-  }
-
-  // リーチ者向け追加判定
-  const discardSuji = new Set<number>();
-  const discardValues = new Set<number>();
-
-  for (const d of discards) {
-    if (d.suit === Suit.Wind || d.suit === Suit.Dragon) continue;
-    const dIdx = tileToIndex(d);
-    for (const si of sujiIndices(dIdx)) {
-      discardSuji.add(si);
+    if (melds.length >= 3) {
+      baseDanger = 7;
+    } else if (melds.length === 2) {
+      baseDanger = 5;
     }
-    discardValues.add(d.value as number);
   }
 
-  // Suji: 相手の捨て牌のsuji → 比較的安全
-  if (tile.suit !== Suit.Wind && tile.suit !== Suit.Dragon) {
-    if (discardSuji.has(idx)) {
-      return DANGER_SUJI;
+  // 2. ホンイツ・チンイツの警戒 (特定のSuitで2つ以上副露している場合、そのSuitの危険度を上げる)
+  if (melds.length >= 2) {
+    const suitCounts: Record<string, number> = {};
+    for (const m of melds) {
+      const first = m.tiles[0];
+      if (first && first.suit !== Suit.Wind && first.suit !== Suit.Dragon) {
+        suitCounts[first.suit] = (suitCounts[first.suit] ?? 0) + 1;
+      }
     }
-  } else {
-    // 風牌・三元牌: リーチ後に捨てられていない → 危険度高
-    return DANGER_HIGH;
+    for (const s in suitCounts) {
+      if (suitCounts[s]! >= 2 && tile.suit === s) {
+        baseDanger += 3;
+      }
+    }
   }
 
-  return DANGER_HIGH;
+  // 3. 字牌（風牌・三元牌）の危険度補正
+  if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) {
+    if (visibleCount >= 4) {
+      return 1;
+    }
+    if (visibleCount === 3) {
+      return 2;
+    }
+    if (visibleCount === 2) {
+      return 4;
+    }
+    if (visibleCount === 1) {
+      return 6;
+    }
+    if (visibleCount === 0) {
+      return isRiichi ? 10 : 7;
+    }
+  }
+
+  // 4. リーチ者向け追加判定
+  if (isRiichi) {
+    const terminalDiscards = discards.filter(d => 
+      d.suit !== Suit.Wind && d.suit !== Suit.Dragon && 
+      (d.value === 1 || d.value === 2 || d.value === 8 || d.value === 9)
+    ).length;
+
+    const discardSuji = new Set<number>();
+    for (const d of discards) {
+      if (d.suit === Suit.Wind || d.suit === Suit.Dragon) continue;
+      const dIdx = tileToIndex(d);
+      for (const si of sujiIndices(dIdx)) {
+        discardSuji.add(si);
+      }
+    }
+
+    if (tile.suit !== Suit.Wind && tile.suit !== Suit.Dragon) {
+      if (discardSuji.has(idx)) {
+        return DANGER_SUJI;
+      }
+      if (tile.value >= 3 && tile.value <= 7 && terminalDiscards >= 3) {
+        return 10;
+      }
+    }
+  }
+
+  return baseDanger;
 }
 
 // ── Shanten ──────────────────────────────────────────────────────────
@@ -99,6 +163,7 @@ function evaluateDiscards(
   opponentDiscards: readonly (readonly Tile[])[],
   opponentRiichi: readonly boolean[],
   prohibitedTiles: readonly Tile[] = [],
+  opponentMelds?: readonly (readonly Meld[])[],
 ): Array<{ tile: Tile; tenpai: number[]; danger: number }> {
   const results: Array<{ tile: Tile; tenpai: number[]; danger: number }> = [];
 
@@ -106,7 +171,7 @@ function evaluateDiscards(
     if (prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) continue;
     const testHand = hand.filter(h => h !== t);
     const waits = findTenpaiTiles(testHand);
-    const danger = evaluateDanger(t, opponentDiscards, opponentRiichi);
+    const danger = evaluateDanger(t, opponentDiscards, opponentRiichi, opponentMelds, hand);
     results.push({ tile: t, tenpai: waits, danger });
   }
 
@@ -125,13 +190,14 @@ export function aiChooseDiscard(
   opponentDiscards: readonly (readonly Tile[])[],
   opponentRiichi: readonly boolean[],
   prohibitedTiles: readonly Tile[] = [],
+  opponentMelds?: readonly (readonly Meld[])[],
 ): Tile {
   if (hand.length !== 14) {
     // 14枚でなければエラーだが、fallback
     return hand.find(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) ?? hand[0] ?? indexToTile(0);
   }
 
-  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi, prohibitedTiles);
+  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi, prohibitedTiles, opponentMelds);
 
   // テンパイする候補に絞る
   const tenpaiCandidates = evals.filter(e => e.tenpai.length > 0);

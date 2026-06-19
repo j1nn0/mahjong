@@ -34,10 +34,10 @@ describe('evaluateDanger', () => {
     expect(danger).toBe(8);
   });
 
-  it('returns 8 for honor against riichi opponent (not genbutsu)', () => {
+  it('returns 10 for honor against riichi opponent (not genbutsu)', () => {
     // Riichi player didn't discard Nan
     const danger = evaluateDanger(nan(), [[m(1)]], [true]);
-    expect(danger).toBe(8);
+    expect(danger).toBe(10);
   });
 
   it('returns 4 for non-riichi opponent', () => {
@@ -52,6 +52,49 @@ describe('evaluateDanger', () => {
     // Worst = 4 (from non-riichi opponent)
     const danger = evaluateDanger(m(1), [[m(5)], [m(1)]], [false, true]);
     expect(danger).toBe(4);
+  });
+
+  it('assigns lower danger for visible honors and very high for fresh (生牌) honors', () => {
+    // Evaluating danger of nan()
+    // Case 1: Fresh honor (0 visible in discards, hand, melds)
+    const dangerFresh = evaluateDanger(nan(), [[m(1)]], [true], [[]], [m(2)]);
+    expect(dangerFresh).toBeGreaterThanOrEqual(9);
+
+    // Case 2: 4 visible honors (e.g. 3 in discards, 1 in my hand)
+    const danger4Visible = evaluateDanger(nan(), [[nan(), nan(), nan()]], [true], [[]], [nan()]);
+    expect(danger4Visible).toBeLessThanOrEqual(1);
+  });
+
+  it('raises danger of middle tiles when riichi opponent discarded many terminals', () => {
+    // Opponent discarded terminal tiles: m(1), m(9), p(1), p(9)
+    // Middle tile m(5) (non-suji) should have increased danger
+    const dangerTerminals = evaluateDanger(m(5), [[m(1), m(9), p(1), p(9)]], [true]);
+    expect(dangerTerminals).toBeGreaterThan(8);
+  });
+
+  it('raises danger for specific suit when non-riichi opponent has multiple melds of that suit (honitsu)', () => {
+    // Opponent is not riichi, but has 2 melds of Man (e.g. Chi 123m, Pon 555m)
+    const melds = [
+      { type: 'chi', tiles: [m(1), m(2), m(3)], calledTile: m(1) },
+      { type: 'pon', tiles: [m(5), m(5), m(5)], calledTile: m(5) }
+    ] as any;
+    
+    // Evaluating Man tile (m(4)) vs Pin tile (p(4))
+    const dangerMan = evaluateDanger(m(4), [[]], [false], [melds], []);
+    const dangerPin = evaluateDanger(p(4), [[]], [false], [melds], []);
+    
+    expect(dangerMan).toBeGreaterThan(dangerPin);
+  });
+
+  it('raises base danger for players with 3 or more melds', () => {
+    const melds = [
+      { type: 'chi', tiles: [m(1), m(2), m(3)], calledTile: m(1) },
+      { type: 'pon', tiles: [m(5), m(5), m(5)], calledTile: m(5) },
+      { type: 'pon', tiles: [p(9), p(9), p(9)], calledTile: p(9) }
+    ] as any;
+
+    const danger = evaluateDanger(s(5), [[]], [false], [melds], []);
+    expect(danger).toBeGreaterThan(4);
   });
 });
 

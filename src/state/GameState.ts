@@ -918,7 +918,13 @@ export function processAiTurn(state: GameState): {
         }
         const discard = player.riichi && state.lastDrawnTile
             ? state.lastDrawnTile
-            : aiChooseDiscard(player.hand, state.players.map((p) => p.discards), state.players.map((p) => p.riichi), state.kuikaeProhibitedTiles);
+            : aiChooseDiscard(
+                player.hand,
+                state.players.map((p) => p.discards),
+                state.players.map((p) => p.riichi),
+                state.kuikaeProhibitedTiles,
+                state.players.map((p) => p.melds)
+            );
         const testHand = removeOneTile(player.hand, discard);
         if (canDeclareRiichi(player) && findWaits(testHand, player.melds).length > 0 && player.points >= 1000) {
             return {
@@ -929,7 +935,13 @@ export function processAiTurn(state: GameState): {
         return { state, action: { type: "DISCARD", player: state.currentPlayer, tile: discard } };
     }
     if (player.hand.length > 0) {
-        const discard = aiChooseDiscard(player.hand, state.players.map((p) => p.discards), state.players.map((p) => p.riichi), state.kuikaeProhibitedTiles);
+        const discard = aiChooseDiscard(
+            player.hand,
+            state.players.map((p) => p.discards),
+            state.players.map((p) => p.riichi),
+            state.kuikaeProhibitedTiles,
+            state.players.map((p) => p.melds)
+        );
         return { state, action: { type: "DISCARD", player: state.currentPlayer, tile: discard } };
     }
     return { state, action: null };
