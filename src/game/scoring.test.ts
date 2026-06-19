@@ -486,3 +486,83 @@ describe('pair fu stacking', () => {
     expect(score!.fu).toBe(40);
   });
 });
+
+describe('fu calculation details', () => {
+  it('pinfu tsumo yields 20 fu', () => {
+    // 123m 456m 789p 23s 44p, win on 4s (two-sided wait)
+    const closed13 = [m(1), m(2), m(3), m(4), m(5), m(6), p(7), p(8), p(9), s(2), s(3), p(4), p(4)];
+    const score = fullScore({
+      closedTiles: closed13,
+      melds: [],
+      winTile: s(4),
+      isTsumo: true,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+    });
+    expect(score).not.toBeNull();
+    expect(score!.yaku.some((y) => y.id === YakuId.Pinfu)).toBe(true);
+    expect(score!.fu).toBe(20);
+  });
+
+  it('pinfu ron yields 30 fu', () => {
+    // 123m 456m 789p 23s 44p, win on 4s (two-sided wait)
+    const closed13 = [m(1), m(2), m(3), m(4), m(5), m(6), p(7), p(8), p(9), s(2), s(3), p(4), p(4)];
+    const score = fullScore({
+      closedTiles: closed13,
+      melds: [],
+      winTile: s(4),
+      isTsumo: false,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+      loser: 1,
+    });
+    expect(score).not.toBeNull();
+    expect(score!.yaku.some((y) => y.id === YakuId.Pinfu)).toBe(true);
+    expect(score!.fu).toBe(30);
+  });
+
+  it('non-pinfu tsumo (e.g. dragon pair + tsumo) yields 30 fu (22 -> 30)', () => {
+    // Hand: 123m 456m 789p 23s 白白, win on 4s (two-sided wait)
+    // Fu: 20 (base) + 2 (dragon pair) + 2 (tsumo) = 24 -> rounded to 30
+    const closed13 = [m(1), m(2), m(3), m(4), m(5), m(6), p(7), p(8), p(9), s(2), s(3), haku(), haku()];
+    const score = fullScore({
+      closedTiles: closed13,
+      melds: [],
+      winTile: s(4),
+      isTsumo: true,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+    });
+    expect(score).not.toBeNull();
+    // No pinfu because of dragon pair
+    expect(score!.yaku.some((y) => y.id === YakuId.Pinfu)).toBe(false);
+    expect(score!.fu).toBe(30);
+  });
+});
