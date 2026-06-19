@@ -743,6 +743,33 @@ describe("gameReducer claims", () => {
     expect(afterDraw.players[0].riichiFuriten).toBe(true);
   });
 
+  it("clears temporary furiten for all players when a meld is called (e.g. PON)", () => {
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1, // P1 discarded
+      players: makePlayers(
+        { ...makeTestPlayer([]), temporaryFuriten: true }, // P0 is in furiten
+        makeTestPlayer([]),
+        { ...makeTestPlayer([p(5), p(5), m(1)]), temporaryFuriten: true }, // P2 has pair of p5 and is in furiten
+        makeTestPlayer([]),
+      ),
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: [{
+        type: "pon",
+        player: 2,
+        tiles: [p(5), p(5), p(5)],
+        calledTile: p(5),
+        meld: { type: MeldType.Poon, tiles: [p(5), p(5), p(5)], calledTile: p(5) },
+        display: "ポン",
+      }],
+    });
+
+    const afterPon = gameReducer(state, { type: "PON", player: 2 });
+
+    expect(afterPon.players[0].temporaryFuriten).toBe(false); // P0's furiten is cleared
+    expect(afterPon.players[2].temporaryFuriten).toBe(false); // P2's furiten is cleared
+  });
+
   it("enters claiming phase after discard when pon is available", () => {
     const start = gameReducer(createInitialState(), { type: "START_GAME" });
     // We need to set up: P0 discards, P1 (or anyone else) can pon

@@ -808,7 +808,7 @@ export function sortClaimsByPriority(options: readonly ClaimOption[], discarder:
         return aOrder - bOrder;
     });
 }
-function clearIppatsu(players: readonly [
+function clearTemporaryFuritenAndIppatsu(players: readonly [
     PlayerData,
     PlayerData,
     PlayerData,
@@ -819,7 +819,12 @@ function clearIppatsu(players: readonly [
     PlayerData,
     PlayerData
 ] {
-    return players.map((player) => player.ippatsu ? updPlayer(player, { ippatsu: false }) : player) as unknown as [
+    return players.map((player) => {
+        const update: Partial<PlayerData> = {};
+        if (player.ippatsu) update.ippatsu = false;
+        if (player.temporaryFuriten) update.temporaryFuriten = false;
+        return Object.keys(update).length > 0 ? updPlayer(player, update) : player;
+    }) as unknown as [
         PlayerData,
         PlayerData,
         PlayerData,
@@ -1074,7 +1079,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 hand: sortHand(newHand),
                 melds: [...player.melds, option.meld],
             });
-            let newPlayers = clearIppatsu(updatePlayerInTuple(state.players, option.player, claimantUpd));
+            let newPlayers = clearTemporaryFuritenAndIppatsu(updatePlayerInTuple(state.players, option.player, claimantUpd));
             // Remove called tile from the discarder's discards
             if (state.lastDiscard) {
                 const dIdx = state.lastDiscard.player;
@@ -1120,7 +1125,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 hand: sortHand(newHand),
                 melds: [...player.melds, option.meld],
             });
-            let newPlayers = clearIppatsu(updatePlayerInTuple(state.players, option.player, claimantUpd));
+            let newPlayers = clearTemporaryFuritenAndIppatsu(updatePlayerInTuple(state.players, option.player, claimantUpd));
             // Remove called tile from the discarder's discards
             if (state.lastDiscard) {
                 const dIdx = state.lastDiscard.player;
@@ -1166,7 +1171,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 hand: sortHand(newHand),
                 melds: [...player.melds, option.meld],
             });
-            let newPlayers = clearIppatsu(updatePlayerInTuple(state.players, option.player, claimantUpd));
+            let newPlayers = clearTemporaryFuritenAndIppatsu(updatePlayerInTuple(state.players, option.player, claimantUpd));
             // Remove called tile from the discarder's discards
             if (state.lastDiscard) {
                 const dIdx = state.lastDiscard.player;
@@ -1211,7 +1216,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 hand: sortHand(removeTileKind(player.hand, action.tile, 4)),
                 melds: [...player.melds, meld],
             });
-            const newPlayers = clearIppatsu(updatePlayerInTuple(state.players, action.player, updatedPlayer));
+            const newPlayers = clearTemporaryFuritenAndIppatsu(updatePlayerInTuple(state.players, action.player, updatedPlayer));
             return {
                 ...state,
                 players: newPlayers,
@@ -1250,7 +1255,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
                 hand: sortHand(removeOneTile(player.hand, action.tile)),
                 melds,
             });
-            const newPlayers = clearIppatsu(updatePlayerInTuple(state.players, action.player, updatedPlayer));
+            const newPlayers = clearTemporaryFuritenAndIppatsu(updatePlayerInTuple(state.players, action.player, updatedPlayer));
             const ronClaims = sortClaimsByPriority(collectClaims(action.tile, action.player, newPlayers), action.player)
                 .filter((claim) => claim.type === "ron");
             let nextDeadWall = state.deadWall;
