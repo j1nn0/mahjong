@@ -311,6 +311,45 @@ describe("abortive draws", () => {
     expect(action).toEqual({ type: "KAKAN", player: 1, tile: m(1) });
   });
 
+  it("processAiTurn discards the drawn tile if the player is in riichi", () => {
+    const hand = [
+      m(1), m(2), m(3), m(4), m(5), m(6), m(7), m(8), m(9), p(1), p(2), p(3), s(1), s(2)
+    ];
+    const state = startedState({
+      currentPlayer: 1,
+      lastDrawnTile: s(2),
+      players: makePlayers(
+        makeTestPlayer([]),
+        { ...makeTestPlayer(hand), riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "DISCARD", player: 1, tile: s(2) });
+  });
+
+  it("processAiTurn chooses genbutsu to discard when an opponent is in riichi", () => {
+    const hand = [
+      m(1), m(2), m(3), m(4), m(5), m(6), m(7), m(8), m(9), s(1), s(2), s(3), p(1), p(9)
+    ];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        { ...makeTestPlayer([]), riichi: true, discards: [p(9)] },
+        makeTestPlayer(hand),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "DECLARE_RIICHI", player: 1, discardTile: p(9) });
+  });
+
   it("processAiTurn does not declare ankan if in riichi", () => {
     const hand = [
       m(1), m(1), m(1), m(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), s(1), s(2),
