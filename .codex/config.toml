@@ -1,0 +1,13 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+
+suppress_unstable_features_warning = true
+
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]
+startup_timeout_sec = 60
+
+[mcp_servers.serena]
+command = "serena"
+args = ["start-mcp-server", "--project-from-cwd", "--context", "ide"]
+startup_timeout_sec = 60
