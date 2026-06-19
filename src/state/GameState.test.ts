@@ -67,7 +67,10 @@ function twoSidedTanyao13WaitingP4(): Tile[] {
 
 function startedState(overrides: Partial<GameState> = {}): GameState {
   return {
-    ...gameReducer(createInitialState(() => 0), { type: "START_GAME" }),
+    ...gameReducer(
+      createInitialState(() => 0),
+      { type: "START_GAME" },
+    ),
     ...overrides,
   };
 }
@@ -157,7 +160,21 @@ describe("collectClaims", () => {
     // Player 0 discards m5, Player 1 has m3,m4,m6,m7 -> can chi 345, 456, 567
     const players = makePlayers(
       makeTestPlayer([m(5)]),
-      makeTestPlayer([m(3), m(4), m(6), m(7), p(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9)]),
+      makeTestPlayer([
+        m(3),
+        m(4),
+        m(6),
+        m(7),
+        p(1),
+        p(2),
+        p(3),
+        p(4),
+        p(5),
+        p(6),
+        p(7),
+        p(8),
+        p(9),
+      ]),
       makeTestPlayer([]),
       makeTestPlayer([]),
     );
@@ -165,7 +182,12 @@ describe("collectClaims", () => {
     const chiClaims = claims.filter((c) => c.type === "chi" && c.player === 1);
     expect(chiClaims).toHaveLength(3);
     // verify the tiles in the options
-    const combos = chiClaims.map(c => c.tiles.map(t => t.value).sort().join(""));
+    const combos = chiClaims.map((c) =>
+      c.tiles
+        .map((t) => t.value)
+        .sort()
+        .join(""),
+    );
     expect(combos).toContain("345");
     expect(combos).toContain("456");
     expect(combos).toContain("567");
@@ -227,9 +249,20 @@ describe("collectClaims", () => {
 describe("abortive draws", () => {
   it("allows kyuushu kyuuhai on the first turn", () => {
     const hand = [
-      m(1), m(9), p(1), p(9), s(1), s(9),
-      ton(), nan(), sha(), pei(),
-      m(2), m(3), m(4), m(5),
+      m(1),
+      m(9),
+      p(1),
+      p(9),
+      s(1),
+      s(9),
+      ton(),
+      nan(),
+      sha(),
+      pei(),
+      m(2),
+      m(3),
+      m(4),
+      m(5),
     ];
     const state = startedState({
       dealer: 0,
@@ -254,9 +287,20 @@ describe("abortive draws", () => {
 
   it("processAiTurn declares kyuushu kyuuhai for computer players", () => {
     const hand = [
-      m(1), m(9), p(1), p(9), s(1), s(9),
-      ton(), nan(), sha(), pei(),
-      p(2), p(3), p(4), p(5),
+      m(1),
+      m(9),
+      p(1),
+      p(9),
+      s(1),
+      s(9),
+      ton(),
+      nan(),
+      sha(),
+      pei(),
+      p(2),
+      p(3),
+      p(4),
+      p(5),
     ];
     const state = startedState({
       currentPlayer: 1,
@@ -275,7 +319,20 @@ describe("abortive draws", () => {
 
   it("processAiTurn declares ankan for computer players", () => {
     const hand = [
-      m(1), m(1), m(1), m(1), p(2), p(3), p(4), p(5), p(6), p(7), p(8), p(9), s(1), s(2),
+      m(1),
+      m(1),
+      m(1),
+      m(1),
+      p(2),
+      p(3),
+      p(4),
+      p(5),
+      p(6),
+      p(7),
+      p(8),
+      p(9),
+      s(1),
+      s(2),
     ];
     const state = startedState({
       currentPlayer: 1,
@@ -313,7 +370,20 @@ describe("abortive draws", () => {
 
   it("processAiTurn discards the drawn tile if the player is in riichi", () => {
     const hand = [
-      m(1), m(2), m(3), m(4), m(5), m(6), m(7), m(8), m(9), p(1), p(2), p(3), s(1), s(2)
+      m(1),
+      m(2),
+      m(3),
+      m(4),
+      m(5),
+      m(6),
+      m(7),
+      m(8),
+      m(9),
+      p(1),
+      p(2),
+      p(3),
+      s(1),
+      s(2),
     ];
     const state = startedState({
       currentPlayer: 1,
@@ -333,7 +403,20 @@ describe("abortive draws", () => {
 
   it("processAiTurn chooses genbutsu to discard when an opponent is in riichi", () => {
     const hand = [
-      m(1), m(2), m(3), m(4), m(5), m(6), m(7), m(8), m(9), s(1), s(2), s(3), p(1), p(9)
+      m(1),
+      m(2),
+      m(3),
+      m(4),
+      m(5),
+      m(6),
+      m(7),
+      m(8),
+      m(9),
+      s(1),
+      s(2),
+      s(3),
+      p(1),
+      p(9),
     ];
     const state = startedState({
       currentPlayer: 1,
@@ -352,7 +435,22 @@ describe("abortive draws", () => {
 
   it("processAiTurn declares ankan if in riichi and wait does not change", () => {
     // wait is 9p, drawing 8s
-    const hand = [m(1), m(1), m(1), p(2), p(3), p(4), s(5), s(6), s(7), s(8), s(8), s(8), s(8), p(9)];
+    const hand = [
+      m(1),
+      m(1),
+      m(1),
+      p(2),
+      p(3),
+      p(4),
+      s(5),
+      s(6),
+      s(7),
+      s(8),
+      s(8),
+      s(8),
+      s(8),
+      p(9),
+    ];
     const state = startedState({
       currentPlayer: 1,
       players: makePlayers(
@@ -371,10 +469,20 @@ describe("abortive draws", () => {
   it("processAiTurn does not declare ankan if in riichi and wait changes", () => {
     // 44456m -> wait 4,7m
     const hand = [
-      m(4), m(4), m(4), m(5), m(6),
-      p(1), p(1), p(1),
-      p(2), p(2), p(2),
-      p(3), p(3), p(3),
+      m(4),
+      m(4),
+      m(4),
+      m(5),
+      m(6),
+      p(1),
+      p(1),
+      p(1),
+      p(2),
+      p(2),
+      p(2),
+      p(3),
+      p(3),
+      p(3),
       m(4),
     ];
     const state = startedState({
@@ -451,6 +559,180 @@ describe("abortive draws", () => {
     expect(action?.type).toBe("DISCARD");
   });
 
+  it("processAiTurn passes a chi that is neither tanyao-aiming nor tenpai-making", () => {
+    // Player 2 can chi 123m on the discarded 3m, but the hand has many
+    // terminals/honors and reaches no tenpai after the call.
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([
+        m(1),
+        m(2),
+        p(4),
+        p(5),
+        p(6),
+        s(1),
+        s(2),
+        ton(),
+        ton(),
+        nan(),
+        m(9),
+        m(9),
+        pei(),
+      ]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(3), player: 1 },
+      claimOptions: collectClaims(m(3), 1, players),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "PASS_CLAIM" });
+  });
+
+  it("processAiTurn claims a tanyao-aiming chi", () => {
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([
+        m(3),
+        m(4),
+        p(2),
+        p(3),
+        p(4),
+        s(5),
+        s(6),
+        s(7),
+        m(6),
+        m(7),
+        m(8),
+        s(2),
+        s(3),
+      ]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(5), player: 1 },
+      claimOptions: collectClaims(m(5), 1, players),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action?.type).toBe("CHI");
+    expect((action as { player: number }).player).toBe(2);
+  });
+
+  it("processAiTurn claims a tanyao-aiming pon", () => {
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([
+        m(5),
+        m(5),
+        p(2),
+        p(3),
+        p(4),
+        s(6),
+        s(7),
+        s(8),
+        m(2),
+        m(3),
+        m(4),
+        p(6),
+        p(7),
+      ]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(5), player: 1 },
+      claimOptions: collectClaims(m(5), 1, players),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "PON", player: 2 });
+  });
+
+  it("processAiTurn claims a pon that reaches tenpai", () => {
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([
+        m(5),
+        m(5),
+        m(2),
+        m(3),
+        m(4),
+        m(6),
+        m(7),
+        m(8),
+        p(3),
+        p(4),
+        p(5),
+        s(1),
+        s(2),
+      ]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(5), player: 1 },
+      claimOptions: collectClaims(m(5), 1, players),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "PON", player: 2 });
+  });
+
+  it("processAiTurn passes a call that would destroy tanyao via kuisagari", () => {
+    // Player 2's hand is all simples and tanyao-ready; the offered 1m chi
+    // would introduce a terminal tile and remove the only potential yaku.
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([
+        m(2),
+        m(3),
+        p(2),
+        p(3),
+        p(4),
+        s(5),
+        s(6),
+        s(7),
+        m(6),
+        m(7),
+        m(8),
+        s(2),
+        s(3),
+      ]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 1,
+      players,
+      lastDiscard: { tile: m(1), player: 1 },
+      claimOptions: collectClaims(m(1), 1, players),
+    });
+
+    const { action } = processAiTurn(state);
+
+    expect(action).toEqual({ type: "PASS_CLAIM" });
+  });
 
   it("ends the round on suufon renda after the fourth matching wind discard", () => {
     const state = startedState({
@@ -525,8 +807,36 @@ describe("exhaustive draw (ryuukyoku)", () => {
       players: makePlayers(
         makeTestPlayer(twoSidedTanyao13()), // tenpai
         makeTestPlayer(twoSidedTanyao13()), // tenpai
-        makeTestPlayer([m(1), m(1), m(9), m(9), p(1), p(1), p(9), p(9), s(1), s(1), ton(), nan(), sha()]), // noten
-        makeTestPlayer([m(1), m(1), m(9), m(9), p(1), p(1), p(9), p(9), s(1), s(1), ton(), nan(), sha()]), // noten
+        makeTestPlayer([
+          m(1),
+          m(1),
+          m(9),
+          m(9),
+          p(1),
+          p(1),
+          p(9),
+          p(9),
+          s(1),
+          s(1),
+          ton(),
+          nan(),
+          sha(),
+        ]), // noten
+        makeTestPlayer([
+          m(1),
+          m(1),
+          m(9),
+          m(9),
+          p(1),
+          p(1),
+          p(9),
+          p(9),
+          s(1),
+          s(1),
+          ton(),
+          nan(),
+          sha(),
+        ]), // noten
       ),
     });
 
@@ -704,7 +1014,9 @@ describe("gameReducer claims", () => {
     expect(afterRon.phase).toBe("roundEnded");
     expect(afterRon.winner).toBe(2);
     expect(afterRon.riichiSticks).toBe(0);
-    expect(afterRon.players[2].points - beforeP2).toBe(afterRon.players[0].points - beforeP0 + 1000);
+    expect(afterRon.players[2].points - beforeP2).toBe(
+      afterRon.players[0].points - beforeP0 + 1000,
+    );
     expect(pointsTotal(afterRon)).toBe(beforeTotal);
     expect(afterRon.message).toContain("ダブロン");
   });
@@ -745,11 +1057,12 @@ describe("gameReducer claims", () => {
       makeTestPlayer([]),
     );
     const claimOptions = collectClaims(m(4), 0, players);
-    const chiIndex = claimOptions.findIndex((c) =>
-      c.type === "chi" &&
-      c.player === 1 &&
-      c.tiles.some((tile) => tile.suit === Suit.Man && tile.value === 2) &&
-      c.tiles.some((tile) => tile.suit === Suit.Man && tile.value === 3)
+    const chiIndex = claimOptions.findIndex(
+      (c) =>
+        c.type === "chi" &&
+        c.player === 1 &&
+        c.tiles.some((tile) => tile.suit === Suit.Man && tile.value === 2) &&
+        c.tiles.some((tile) => tile.suit === Suit.Man && tile.value === 3),
     );
     const state = startedState({
       phase: "claiming",
@@ -900,14 +1213,16 @@ describe("gameReducer claims", () => {
         makeTestPlayer([]),
       ),
       lastDiscard: { tile: p(5), player: 1 },
-      claimOptions: [{
-        type: "pon",
-        player: 2,
-        tiles: [p(5), p(5), p(5)],
-        calledTile: p(5),
-        meld: { type: MeldType.Poon, tiles: [p(5), p(5), p(5)], calledTile: p(5) },
-        display: "ポン",
-      }],
+      claimOptions: [
+        {
+          type: "pon",
+          player: 2,
+          tiles: [p(5), p(5), p(5)],
+          calledTile: p(5),
+          meld: { type: MeldType.Poon, tiles: [p(5), p(5), p(5)], calledTile: p(5) },
+          display: "ポン",
+        },
+      ],
     });
 
     const afterPon = gameReducer(state, { type: "PON", player: 2 });
@@ -998,10 +1313,20 @@ describe("gameReducer claims", () => {
       players: makePlayers(
         {
           ...makeTestPlayer([
-            m(4), m(4), m(4), m(4), m(5), m(6),
-            p(1), p(1), p(1),
-            p(2), p(2), p(2),
-            p(3), p(3),
+            m(4),
+            m(4),
+            m(4),
+            m(4),
+            m(5),
+            m(6),
+            p(1),
+            p(1),
+            p(1),
+            p(2),
+            p(2),
+            p(2),
+            p(3),
+            p(3),
           ]),
           riichi: true,
         },
@@ -1594,7 +1919,11 @@ describe("riichi and win flags", () => {
       ),
     });
 
-    const afterRiichi = gameReducer(state, { type: "DECLARE_RIICHI", player: 0, discardTile: p(7) });
+    const afterRiichi = gameReducer(state, {
+      type: "DECLARE_RIICHI",
+      player: 0,
+      discardTile: p(7),
+    });
 
     expect(afterRiichi.players[0].riichi).toBe(false);
     expect(afterRiichi.riichiSticks).toBe(state.riichiSticks);
@@ -1602,7 +1931,22 @@ describe("riichi and win flags", () => {
 
   it("allows ANKAN during riichi if wait does not change", () => {
     // Hand: 111m 234p 567s 8888s 9p -> wait 9p
-    const hand = [m(1), m(1), m(1), p(2), p(3), p(4), s(5), s(6), s(7), s(8), s(8), s(8), s(8), p(9)];
+    const hand = [
+      m(1),
+      m(1),
+      m(1),
+      p(2),
+      p(3),
+      p(4),
+      s(5),
+      s(6),
+      s(7),
+      s(8),
+      s(8),
+      s(8),
+      s(8),
+      p(9),
+    ];
     const state = startedState({
       currentPlayer: 0,
       players: makePlayers(
@@ -1623,10 +1967,20 @@ describe("riichi and win flags", () => {
 
   it("forbids ANKAN during riichi if wait changes", () => {
     const hand = [
-      m(4), m(4), m(4), m(4), m(5), m(6),
-      p(1), p(1), p(1),
-      p(2), p(2), p(2),
-      p(3), p(3),
+      m(4),
+      m(4),
+      m(4),
+      m(4),
+      m(5),
+      m(6),
+      p(1),
+      p(1),
+      p(1),
+      p(2),
+      p(2),
+      p(2),
+      p(3),
+      p(3),
     ];
     const state = startedState({
       currentPlayer: 0,
@@ -1686,7 +2040,12 @@ describe("riichi and win flags", () => {
     const hand = [...twoSidedTanyao13WaitingP4(), winTile];
     const state = startedState({
       currentPlayer: 0,
-      players: makePlayers({ ...makeTestPlayer(hand), discards: [m(1)] }, makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
+      players: makePlayers(
+        { ...makeTestPlayer(hand), discards: [m(1)] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
       wall: [],
       lastDrawnTile: winTile,
       lastDrawWasRinshan: false,
@@ -1702,7 +2061,12 @@ describe("riichi and win flags", () => {
     const hand = [...twoSidedTanyao13WaitingP4(), winTile];
     const state = startedState({
       currentPlayer: 0,
-      players: makePlayers({ ...makeTestPlayer(hand), discards: [m(1)] }, makeTestPlayer([]), makeTestPlayer([]), makeTestPlayer([])),
+      players: makePlayers(
+        { ...makeTestPlayer(hand), discards: [m(1)] },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
       wall: [s(1)],
       lastDrawnTile: winTile,
       lastDrawWasRinshan: true,
@@ -1717,7 +2081,10 @@ describe("riichi and win flags", () => {
   it("allows ron on an added kan and scores chankan", () => {
     const ponMeld: Meld = { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) };
     const players = makePlayers(
-      { ...makeTestPlayer([m(2), p(1), p(1), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]), melds: [ponMeld] },
+      {
+        ...makeTestPlayer([m(2), p(1), p(1), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]),
+        melds: [ponMeld],
+      },
       makeTestPlayer(twoSidedTanyao13()),
       makeTestPlayer([]),
       makeTestPlayer([]),
@@ -1730,7 +2097,9 @@ describe("riichi and win flags", () => {
 
     const afterKakan = gameReducer(state, { type: "KAKAN", player: 0, tile: m(2) });
     expect(afterKakan.phase).toBe("claiming");
-    expect(afterKakan.claimOptions.some((claim) => claim.type === "ron" && claim.player === 1)).toBe(true);
+    expect(
+      afterKakan.claimOptions.some((claim) => claim.type === "ron" && claim.player === 1),
+    ).toBe(true);
 
     const afterRon = gameReducer(afterKakan, { type: "RON", winner: 1 });
 
@@ -1741,7 +2110,10 @@ describe("riichi and win flags", () => {
   it("continues to rinshan draw when added-kan ron is passed", () => {
     const ponMeld: Meld = { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) };
     const players = makePlayers(
-      { ...makeTestPlayer([m(2), p(1), p(1), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]), melds: [ponMeld] },
+      {
+        ...makeTestPlayer([m(2), p(1), p(1), p(2), p(3), p(4), s(2), s(3), s(4), p(5), p(6)]),
+        melds: [ponMeld],
+      },
       makeTestPlayer(twoSidedTanyao13()),
       makeTestPlayer([]),
       makeTestPlayer([]),
