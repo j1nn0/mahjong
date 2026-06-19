@@ -360,9 +360,15 @@ const App: React.FC = () => {
     if (isAiTurn || isAiClaim) {
       processingRef.current = true;
       const timer = setTimeout(() => {
-        const { action } = processAiTurn(state);
-        processingRef.current = false;
-        if (action) dispatch(action);
+        try {
+          const { action } = processAiTurn(state);
+          processingRef.current = false;
+          if (action) dispatch(action);
+        } catch (err) {
+          processingRef.current = false;
+          const message = err instanceof Error ? err.message : String(err);
+          dispatch({ type: "SET_MESSAGE", message: `AIエラー: ${message}` });
+        }
       }, 600);
       return () => {
         clearTimeout(timer);

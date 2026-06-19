@@ -155,4 +155,8 @@ export type GameAction =
   | {
       type: "RESTORE";
       state: GameState;
+    }
+  | {
+      type: "SET_MESSAGE";
+      message: string;
     };

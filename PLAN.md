@@ -369,12 +369,19 @@ $ tsc --noEmit (no output)
 
 受け入れ条件:
 
-- [ ] AI 処理の `useEffect` 内を `try-catch` で包む
-- [ ] エラー発生時は `state.message` にエラー内容を表示し、ゲームを継続できる状態にする
+- [x] AI 処理の `useEffect` 内を `try-catch` で包む
+- [x] エラー発生時は `state.message` にエラー内容を表示し、ゲームを継続できる状態にする
 
 想定変更ファイル:
 
-- `src/ui/App.tsx`（AI 処理 useEffect）
+- `src/ui/App.tsx`（AI 処理 useEffect）✅
+- `src/state/types.ts`（`SET_MESSAGE` アクション追加）✅
+- `src/state/reducer.ts`（`SET_MESSAGE` ハンドラ追加）✅
+- `src/state/GameState.test.ts`（`SET_MESSAGE` テスト追加）✅
+
+検証結果:
+- `pnpm test`: 14 files / 252 tests passed
+- `tsc --noEmit`: exit 0
 
 ---
 

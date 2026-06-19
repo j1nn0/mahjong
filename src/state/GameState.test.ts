@@ -2482,4 +2482,10 @@ describe("riichi discard marking", () => {
     expect(lastDiscard.isRiichi).toBe(true);
     expect(lastDiscard.player).toBe(riichiState.players[1].wind);
   });
+
+  it("SET_MESSAGE updates state.message", () => {
+    const state = createInitialState();
+    const next = gameReducer(state, { type: "SET_MESSAGE", message: "テストエラー" });
+    expect(next.message).toBe("テストエラー");
+  });
 });

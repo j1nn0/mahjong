@@ -802,6 +802,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         return { ...state, message: "\u4E5D\u7A2E\u4E5D\u724C\u3067\u304D\u307E\u305B\u3093" };
       }
       return finishAbortiveDraw(state, "kyuushuKyuuhai");
+    case "SET_MESSAGE":
+      return { ...state, message: (action as { type: "SET_MESSAGE"; message: string }).message };
     case "END_ROUND":
       return finishRound(
         state,
