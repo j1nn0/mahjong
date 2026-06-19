@@ -153,7 +153,7 @@ function makePlayer(wind: number, points: number): PlayerData {
 function updPlayer(player: PlayerData, overrides: Partial<PlayerData>): PlayerData {
     return { ...player, ...overrides };
 }
-function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
+export function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
     const idx = hand.findIndex((t) => isSameTile(t, tile));
     if (idx === -1)
         return [...hand];
@@ -248,7 +248,7 @@ function canDeclareRiichi(player: PlayerData): boolean {
     return !player.riichi && player.melds.every((meld) => meld.type === MeldType.ClosedKan);
 }
 /** 待ち牌の配列を返す (既存の面子を固定して計算) */
-function findWaits(closedTiles: readonly Tile[], melds: readonly Meld[]): number[] {
+export function findWaits(closedTiles: readonly Tile[], melds: readonly Meld[] = []): number[] {
     if (melds.length === 0) {
         return findTenpaiTiles(closedTiles);
     }
@@ -884,7 +884,7 @@ export function processAiTurn(state: GameState): {
                 }
             }
             for (const tile of player.hand) {
-                if (player.melds.some((m) => m.type === MeldType.Poon && isSameTileKind(m.calledTile, tile))) {
+                if (player.melds.some((m) => m.type === MeldType.Poon && m.calledTile && isSameTileKind(m.calledTile, tile))) {
                     return { state, action: { type: "KAKAN", player: state.currentPlayer, tile } };
                 }
             }

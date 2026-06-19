@@ -6,11 +6,13 @@ import {
   normalizeGameState,
   processAiTurn,
   canDeclareKyuushuKyuuhai,
+  removeOneTile,
+  findWaits,
 } from "../state/GameState.js";
 import { saveGame, loadGame, clearSave } from "../state/persistence.js";
 import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
 import { formatTile, getDoraIndicators, tileToUnicode } from "../game/tiles.js";
-import { isWinningHand, tilesToCounts } from "../game/agari.js";
+import { isWinningHand, tilesToCounts, indexToTile } from "../game/agari.js";
 import { type Meld, MeldType, type Tile, Suit } from "../game/types.js";
 
 // ── Display helpers ────────────────────────────────────────────────
@@ -257,9 +259,10 @@ interface ActionBarProps {
   canKan: boolean;
   canKyuushu: boolean;
   message: string;
+  waits: Tile[];
 }
 
-const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canKyuushu, message }) => {
+const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canKyuushu, message, waits }) => {
   return (
     <Box flexDirection="column" marginTop={1}>
       <Box>
@@ -267,10 +270,16 @@ const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canK
         {canRiichi && <Text color="yellow"> [R]リーチ </Text>}
         {canKan && <Text color="cyan"> [K]カン </Text>}
         {canKyuushu && <Text color="magenta"> [Y]九種九牌 </Text>}
+        {waits.length > 0 && <Text color="blue"> 待ち: {waits.length}種 </Text>}
       </Box>
       <Box marginTop={1}>
         <Text dimColor>{"← →: 選択  Enter: 打牌"}</Text>
       </Box>
+      {waits.length > 0 && (
+        <Box marginTop={1}>
+          <Text color="blue">待ち牌: {waits.map(formatTile).join(" ")}</Text>
+        </Box>
+      )}
       <Box marginTop={1}>
         <Text>{message}</Text>
       </Box>
@@ -415,6 +424,15 @@ const App: React.FC = () => {
   })();
   const humanCanKan = humanCanAnkan || humanCanKakan;
   const humanCanKyuushu = canDeclareKyuushuKyuuhai(state, 0);
+  const humanWaits = (() => {
+    if (state.phase !== "playing" || state.currentPlayer !== 0 || state.players[0].riichi) return [];
+    if (turnTileCount(state.players[0]) !== 14) return [];
+    const selectedTile = hand[selectedIndex];
+    if (!selectedTile) return [];
+    const testHand = removeOneTile(hand, selectedTile);
+    const waits = findWaits(testHand, state.players[0].melds);
+    return waits.map((w) => indexToTile(w));
+  })();
 
   // Keyboard input
   useInput((input, key) => {
@@ -833,6 +851,7 @@ const App: React.FC = () => {
           canKan={humanCanKan}
           canKyuushu={humanCanKyuushu}
           message={state.message}
+          waits={humanWaits}
         />
       </Box>
     </Box>
