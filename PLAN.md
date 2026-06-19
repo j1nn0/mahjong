@@ -322,17 +322,22 @@ $ tsc --noEmit (no output)
 
 受け入れ条件:
 
-- [ ] アクションハンドラ群を `src/state/reducer.ts` に分離する
-- [ ] 局終了・清算処理を `src/state/finishRound.ts` に分離する
-- [ ] クレームフェーズ処理を `src/state/claimPhase.ts` に分離する
-- [ ] 分割後もすべての既存テストが通過する
+- [x] アクションハンドラ群を `src/state/reducer.ts` に分離する
+- [x] 局終了・清算処理を `src/state/finishRound.ts` に分離する
+- [x] クレームフェーズ処理を `src/state/claimPhase.ts` に分離する
+- [x] 分割後もすべての既存テストが通過する
 
-想定変更ファイル:
+変更ファイル:
 
-- `src/state/GameState.ts`（縮小）
-- `src/state/reducer.ts`（新規）
-- `src/state/finishRound.ts`（新規）
-- `src/state/claimPhase.ts`（新規）
+- `src/state/GameState.ts`（2018行 → 654行に縮小、再エクスポート追加）
+- `src/state/types.ts`（新規 158行: 型定義を分離し循環依存を回避）
+- `src/state/reducer.ts`（新規 818行: gameReducer）
+- `src/state/finishRound.ts`（新規 499行: 局終了・清算・途中流局）
+- `src/state/claimPhase.ts`（新規 160行: クレーム収集・処理）
+
+検証結果:
+- `pnpm test`: 13 files / 222 tests passed
+- `tsc --noEmit`: exit 0
 
 ---
 
