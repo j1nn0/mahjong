@@ -12,6 +12,7 @@ function p(v: number): Tile {
   return { suit: Suit.Pin, value: v as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red: false };
 }
 function nan(): Tile { return { suit: Suit.Wind, value: Wind.Nan, red: false }; }
+function ton(): Tile { return { suit: Suit.Wind, value: Wind.Ton, red: false }; }
 
 describe('evaluateDanger', () => {
   it('returns 0 for genbutsu (tile in opponent discards)', () => {
@@ -187,5 +188,78 @@ describe('aiChooseDiscard', () => {
     // Terminals -> score 10
     // So Pei has lowest score (0) and should be discarded first
     expect(chosen).toEqual({ suit: Suit.Wind, value: Wind.Pei } as Tile);
+  });
+
+  it('chooses discard that minimizes shanten when not in tenpai', () => {
+    // 14 tiles: 123m 456m (2 melds), 12p 45p 78s (3 taatsu), 9p 9s nan (3 isolated)
+    // Minimizing shanten means discarding one of the isolated tiles (9p or nan()) -> shanten 1
+    // Discarding a tile from a taatsu (e.g. 4p) would increase shanten to 2
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      p(1), p(2),
+      p(4), p(5),
+      s(7), s(8),
+      p(9), nan(),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [], [], []];
+    const riichi: readonly boolean[] = [false, false, false, false];
+
+    const chosen = aiChooseDiscard(hand, discards, riichi);
+
+    const badDiscards = [
+      m(1), m(2), m(3), m(4), m(5), m(6),
+      p(1), p(2), p(4), p(5), s(7), s(8)
+    ];
+    const isBad = badDiscards.some(b => b.suit === chosen.suit && b.value === chosen.value);
+    expect(isBad).toBe(false);
+  });
+
+  it('prefers to discard a safe honor tile rather than breaking a ready (tenpai) hand', () => {
+    // Hand: 123m 456m 789s (3 melds), 88s (pair, from s789s + s8 + s8), chun chun (pair), nan (1 safe honor)
+    // Discarding nan() yields tenpai (shanten 0, waiting for 8s/chun)
+    // Discarding 8s or chun breaks the tenpai (shanten 1)
+    // Traditional heuristic scores safe nan() as 60, and pairs as 50, which would discard 8s or chun!
+    // With shanten minimization, it must discard nan() to keep tenpai (shanten 0).
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      s(7), s(8), s(9),
+      s(8), s(8),
+      p(5), p(5),
+      nan(),
+    ];
+    // Add nan() to discards to make it "safe"
+    const discards: readonly (readonly Tile[])[] = [[nan()], [], [], []];
+    const riichi: readonly boolean[] = [false, false, false, false];
+
+    const chosen = aiChooseDiscard(hand, discards, riichi);
+
+    // Should discard nan() to maintain tenpai
+    expect(chosen).toEqual(nan());
+  });
+
+  it('does not break taatsu (塔子) or pairs to keep safe honors when in iishanten', () => {
+    // Hand: 123m 456m (2 melds), 88s 55p (2 pairs), 23s (1 taatsu), nan ton (2 safe honors)
+    // Discarding nan() or ton() keeps iishanten (shanten 1)
+    // Discarding a taatsu tile (2s, 3s) breaks taatsu and increases shanten to 2
+    // Traditional heuristic scores safe nan()/ton() as 60, pairs as 50, and taatsu as 20, which would discard 2s or 3s!
+    // With shanten minimization, it must discard nan() or ton() to keep shanten 1.
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      s(8), s(8),
+      p(5), p(5),
+      s(2), s(3),
+      nan(), ton(),
+    ];
+    // Add nan() and ton() to discards to make them "safe"
+    const discards: readonly (readonly Tile[])[] = [[nan(), ton()], [], [], []];
+    const riichi: readonly boolean[] = [false, false, false, false];
+
+    const chosen = aiChooseDiscard(hand, discards, riichi);
+
+    // Should discard nan() or ton() to keep shanten 1
+    expect([nan(), ton()]).toContainEqual(chosen);
   });
 });

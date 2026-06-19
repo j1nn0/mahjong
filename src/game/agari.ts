@@ -182,3 +182,138 @@ export function findTenpaiTiles(tiles: readonly Tile[]): number[] {
 export function formatTenpaiIndices(indices: number[]): string {
   return indices.map(i => tileToUnicode(indexToTile(i))).join('');
 }
+
+// ── Shanten calculation ──────────────────────────────────────────
+
+function calcNormalShanten(counts: number[]): number {
+  let minShanten = 8;
+
+  function backtrack(meldsCount: number, taatsuCount: number, hasPair: boolean, startIdx: number) {
+    let currentMelds = meldsCount;
+    let currentTaatsu = taatsuCount;
+    if (currentMelds + currentTaatsu > 4) {
+      currentTaatsu = 4 - currentMelds;
+    }
+    const shanten = 8 - 2 * currentMelds - currentTaatsu - (hasPair ? 1 : 0);
+    if (shanten < minShanten) {
+      minShanten = shanten;
+    }
+
+    if (startIdx >= 34) return;
+
+    for (let i = startIdx; i < 34; i++) {
+      if (counts[i] === 0) continue;
+
+      // 1. 刻子
+      if (counts[i]! >= 3) {
+        counts[i] = counts[i]! - 3;
+        backtrack(meldsCount + 1, taatsuCount, hasPair, i);
+        counts[i] = counts[i]! + 3;
+      }
+
+      // 2. 順子
+      if (i < 27 && i % 9 <= 6) {
+        if (counts[i]! > 0 && counts[i + 1]! > 0 && counts[i + 2]! > 0) {
+          counts[i]--;
+          counts[i + 1]--;
+          counts[i + 2]--;
+          backtrack(meldsCount + 1, taatsuCount, hasPair, i);
+          counts[i]++;
+          counts[i + 1]++;
+          counts[i + 2]++;
+        }
+      }
+
+      // 3. 対子（雀頭）
+      if (!hasPair && counts[i]! >= 2) {
+        counts[i] = counts[i]! - 2;
+        backtrack(meldsCount, taatsuCount, true, i);
+        counts[i] = counts[i]! + 2;
+      }
+
+      // 4. 塔子（面子＋塔子 < 4 のときのみ）
+      if (meldsCount + taatsuCount < 4) {
+        // 対子塔子
+        if (counts[i]! >= 2) {
+          counts[i] = counts[i]! - 2;
+          backtrack(meldsCount, taatsuCount + 1, hasPair, i);
+          counts[i] = counts[i]! + 2;
+        }
+        // 辺張・両面塔子
+        if (i < 27 && i % 9 <= 7) {
+          if (counts[i]! > 0 && counts[i + 1]! > 0) {
+            counts[i]--;
+            counts[i + 1]--;
+            backtrack(meldsCount, taatsuCount + 1, hasPair, i);
+            counts[i]++;
+            counts[i + 1]++;
+          }
+        }
+        // 嵌張塔子
+        if (i < 27 && i % 9 <= 6) {
+          if (counts[i]! > 0 && counts[i + 2]! > 0) {
+            counts[i]--;
+            counts[i + 2]--;
+            backtrack(meldsCount, taatsuCount + 1, hasPair, i);
+            counts[i]++;
+            counts[i + 2]++;
+          }
+        }
+      }
+    }
+  }
+
+  backtrack(0, 0, false, 0);
+  return minShanten;
+}
+
+function calcChiitoitsuShanten(counts: number[]): number {
+  let pairs = 0;
+  let uniqueTiles = 0;
+  for (const count of counts) {
+    if (count > 0) {
+      uniqueTiles++;
+      if (count >= 2) {
+        pairs++;
+      }
+    }
+  }
+  let shanten = 6 - pairs;
+  if (uniqueTiles < 7) {
+    shanten += (7 - uniqueTiles);
+  }
+  return shanten;
+}
+
+function calcKokushiShanten(counts: number[]): number {
+  let uniqueKokushi = 0;
+  let hasPair = false;
+  for (const idx of KOKUSHI_INDICES) {
+    const count = counts[idx]!;
+    if (count > 0) {
+      uniqueKokushi++;
+      if (count >= 2) {
+        hasPair = true;
+      }
+    }
+  }
+  return 13 - uniqueKokushi - (hasPair ? 1 : 0);
+}
+
+/**
+ * シャンテン数を計算する
+ * tiles: 現在の手牌 (13枚または14枚想定)
+ */
+export function calcShanten(tiles: readonly Tile[]): number {
+  const counts = tilesToCounts(tiles);
+  
+  if (tiles.length === 14 && isWinningHand(counts)) {
+    return -1;
+  }
+  
+  const normal = calcNormalShanten([...counts]);
+  const chiitoi = calcChiitoitsuShanten(counts);
+  const kokushi = calcKokushiShanten(counts);
+
+  return Math.min(normal, chiitoi, kokushi);
+}

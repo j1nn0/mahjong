@@ -1,6 +1,6 @@
 import { type Tile, type Meld, Suit } from './types.js';
 import { sortHand } from './tiles.js';
-import { findTenpaiTiles, tileToIndex, indexToTile } from './agari.js';
+import { findTenpaiTiles, tileToIndex, indexToTile, calcShanten } from './agari.js';
 
 // ── Suji helper ──────────────────────────────────────────────────────
 
@@ -207,20 +207,36 @@ export function aiChooseDiscard(
     return sorted[0]!.tile;
   }
 
-  // テンパイできない: 孤立牌優先（スコア最低の牌）
-  return fallbackIsolated(hand, opponentDiscards, prohibitedTiles);
+  // テンパイできない: シャンテン数を最小化する打牌を選ぶ
+  const candidates: Array<{ tile: Tile; shanten: number }> = [];
+  for (const t of hand) {
+    if (prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) continue;
+    const testHand = hand.filter(h => h !== t);
+    const shanten = calcShanten(testHand);
+    candidates.push({ tile: t, shanten });
+  }
+
+  if (candidates.length > 0) {
+    const minShanten = Math.min(...candidates.map(c => c.shanten));
+    const bestTiles = candidates.filter(c => c.shanten === minShanten).map(c => c.tile);
+    return fallbackIsolated(bestTiles, hand, opponentDiscards, prohibitedTiles);
+  }
+
+  return fallbackIsolated(hand, hand, opponentDiscards, prohibitedTiles);
 }
 
 /** 孤立牌優先のfallback */
 function fallbackIsolated(
-  hand: readonly Tile[],
+  candidates: readonly Tile[],
+  fullHand: readonly Tile[],
   opponentDiscards: readonly (readonly Tile[])[],
   prohibitedTiles: readonly Tile[] = []
 ): Tile {
-  const legal = hand.filter(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value));
-  const sorted = sortHand(legal.length > 0 ? legal : [...hand]);
+  const legal = candidates.filter(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value));
+  const sortedCandidates = sortHand(legal.length > 0 ? legal : [...candidates]);
+  
   const counts = new Map<string, number>();
-  for (const t of sorted) {
+  for (const t of fullHand) {
     const key = `${t.suit}:${t.value}`;
     counts.set(key, (counts.get(key) ?? 0) + 1);
   }
@@ -246,16 +262,17 @@ function fallbackIsolated(
 
     const idx = tileToIndex(tile);
     let s = (tile.value === 1 || tile.value === 9) ? 10 : 5; // 中張牌(2-8)は序盤に処理するためスコアを低くする
-    if (idx % 9 > 0 && sorted.some(t => tileToIndex(t) === idx - 1)) s += 15;
-    if (idx % 9 < 8 && sorted.some(t => tileToIndex(t) === idx + 1)) s += 15;
-    if (idx % 9 > 1 && sorted.some(t => tileToIndex(t) === idx - 2)) s += 5;
-    if (idx % 9 < 7 && sorted.some(t => tileToIndex(t) === idx + 2)) s += 5;
+    const fullHandSorted = sortHand([...fullHand]);
+    if (idx % 9 > 0 && fullHandSorted.some(t => tileToIndex(t) === idx - 1)) s += 15;
+    if (idx % 9 < 8 && fullHandSorted.some(t => tileToIndex(t) === idx + 1)) s += 15;
+    if (idx % 9 > 1 && fullHandSorted.some(t => tileToIndex(t) === idx - 2)) s += 5;
+    if (idx % 9 < 7 && fullHandSorted.some(t => tileToIndex(t) === idx + 2)) s += 5;
     return s;
   }
 
-  let worst = sorted[0]!;
+  let worst = sortedCandidates[0]!;
   let worstScore = score(worst);
-  for (const t of sorted.slice(1)) {
+  for (const t of sortedCandidates.slice(1)) {
     const s = score(t);
     if (s < worstScore) { worst = t; worstScore = s; }
   }

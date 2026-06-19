@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { Suit, type Tile } from '../game/types.js';
-import { isTenpai, findTenpaiTiles, tileToIndex, tilesToCounts, isWinningHand } from '../game/agari.js';
+import { isTenpai, findTenpaiTiles, tileToIndex, tilesToCounts, isWinningHand, calcShanten } from '../game/agari.js';
 
 function m(v: number): Tile {
   return { suit: Suit.Man, value: v as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 };
@@ -175,5 +175,83 @@ describe('isTenpai', () => {
     expect(isTenpai(tiles)).toBe(true);
     expect(findTenpaiTiles(tiles)).toContain(tileToIndex(m(1)));
     expect(findTenpaiTiles(tiles)).toContain(tileToIndex(hatsu()));
+  });
+});
+
+describe('calcShanten', () => {
+  it('returns -1 for a winning 14-tile hand', () => {
+    const tiles = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      m(1), m(2), m(3),
+      m(5), m(5),
+    ];
+    expect(calcShanten(tiles)).toBe(-1);
+  });
+
+  it('returns 0 for tenpai hands (13 tiles)', () => {
+    // Ryanmen tenpai
+    const tiles = [
+      m(1), m(2), m(3),
+      m(5), m(6), m(7),
+      m(7), m(8), m(9),
+      m(4), m(5),
+      m(1), m(1),
+    ];
+    expect(calcShanten(tiles)).toBe(0);
+  });
+
+  it('returns 1 for iishanten (1-shanten) hands', () => {
+    // 123m 456m 789m 45p 78s 9p (13 tiles)
+    // Needs 3p/6p (to make 456p) or 6s/9s (to make 789s) -> iishanten
+    const tiles = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      p(4), p(5),
+      s(7), s(8),
+      p(9),
+    ];
+    expect(calcShanten(tiles)).toBe(1);
+  });
+
+  it('returns 2 for ryanshanten (2-shanten) hands', () => {
+    // 123m 456m 12p 45p 78s 9p 1s (13 tiles)
+    const tiles = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      p(1), p(2),
+      p(4), p(5),
+      s(7), s(8),
+      s(1),
+    ];
+    expect(calcShanten(tiles)).toBe(2);
+  });
+
+  it('returns 1 for chiitoitsu 1-shanten hand', () => {
+    // 5 pairs + 3 isolated tiles (13 tiles) -> 1-shanten
+    const tiles = [
+      m(1), m(1),
+      m(2), m(2),
+      p(3), p(3),
+      p(4), p(4),
+      s(5), s(5),
+      s(9), ton(), nan()
+    ];
+    expect(calcShanten(tiles)).toBe(1);
+  });
+
+  it('returns 1 for kokushi 1-shanten hand', () => {
+    // 12 different kokushi tiles (13 tiles) -> 1-shanten
+    const tiles = [
+      m(1), m(9),
+      p(1), p(9),
+      s(1), s(9),
+      ton(), nan(), sha(), pei(),
+      chun(), haku(),
+      m(2), // non-kokushi tile
+    ];
+    expect(calcShanten(tiles)).toBe(1);
   });
 });
