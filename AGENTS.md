@@ -1,3 +1,5 @@
+@ORDNA.md
+
 # Repository Guidelines
 
 ## Top priority rule
