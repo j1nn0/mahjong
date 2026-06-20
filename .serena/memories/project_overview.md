@@ -1,0 +1,1 @@
+TypeScript製のリーチ麻雀ターミナルUI。React 18とInk 5を使用し、エントリポイントはsrc/index.tsx。src/uiは表示・入力、src/stateはreducer・進行・永続化、src/gameは牌モデル・AI・和了/役/点数計算。テストはVitestでソース隣接の*.test.ts。タスク管理はOrdnaを使用。

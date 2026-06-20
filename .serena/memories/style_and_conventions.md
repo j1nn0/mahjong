@@ -1,0 +1,1 @@
+strict TypeScript + ES modules。ローカルimportは明示的な.js拡張子。2スペース、シングルクォート、セミコロン、簡潔なnamed export。React componentはPascalCase、関数・変数はcamelCase。純粋な麻雀ロジックはsrc/game、状態・永続化はsrc/state、Ink UI・キー入力はsrc/ui。決定的な手牌と明示的assertionを優先。全ユーザー応答は日本語。すべてのshell commandはrtkをprefix。CodexではContext Mode利用前にCONTEXT-MODE.codex.mdに従う。

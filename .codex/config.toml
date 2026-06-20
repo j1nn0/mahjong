@@ -17,3 +17,6 @@ approval_mode = "approve"
 command = "serena"
 args = ["start-mcp-server", "--project-from-cwd", "--context", "ide"]
 startup_timeout_sec = 60
+
+[mcp_servers.serena.tools.write_memory]
+approval_mode = "approve"
