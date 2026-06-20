@@ -104,12 +104,14 @@ export function calculateScore(
   doraIndicators?: readonly Tile[],
   uraDoraIndicators?: readonly Tile[],
   loser?: number,
+  responsiblePlayer?: number,
+  responsibilityType?: 'daisangen' | 'daisuushii',
 ): ScoreResult {
   // Yakuman
   const yakumanCount = totalYakuman(detectedYaku);
   if (yakumanCount > 0) {
     const basePoints = MANGAN * 4 * yakumanCount;
-    const payment = calcPayment(
+    let payment = calcPayment(
       winner,
       dealer,
       handGroups.isTsumo,
@@ -118,6 +120,19 @@ export function calculateScore(
       honba,
       loser,
     );
+    
+    // 責任払い調整
+    if (responsiblePlayer !== undefined && responsibilityType) {
+      const hasMatchingYakuman = detectedYaku.some((y) => {
+        if (responsibilityType === 'daisangen') return y.id === YakuId.DaiSanGen;
+        if (responsibilityType === 'daisuushii') return y.id === YakuId.DaiSuushii;
+        return false;
+      });
+      if (hasMatchingYakuman) {
+        payment = adjustForResponsibility(payment, winner, responsiblePlayer, handGroups.isTsumo, loser, riichiSticks);
+      }
+    }
+    
     return {
       yaku: detectedYaku,
       han: 0,
@@ -162,7 +177,20 @@ export function calculateScore(
     basePoints = MANGAN;
   }
 
-  const payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba, loser);
+  let payment = calcPayment(winner, dealer, handGroups.isTsumo, basePoints, riichiSticks, honba, loser);
+  
+  // 責任払い調整
+  if (responsiblePlayer !== undefined && responsibilityType) {
+    const hasMatchingYakuman = detectedYaku.some((y) => {
+      if (responsibilityType === 'daisangen') return y.id === YakuId.DaiSanGen;
+      if (responsibilityType === 'daisuushii') return y.id === YakuId.DaiSuushii;
+      return false;
+    });
+    if (hasMatchingYakuman) {
+      payment = adjustForResponsibility(payment, winner, responsiblePlayer, handGroups.isTsumo, loser, riichiSticks);
+    }
+  }
+  
   const score = payment.winnerGets;
 
   return {
@@ -175,6 +203,48 @@ export function calculateScore(
     limit,
     score,
     payment,
+  };
+}
+
+
+// ── Responsibility payment adjustment ─────────────────────────────
+
+function adjustForResponsibility(
+  payment: Payment,
+  _winner: number,
+  responsiblePlayer: number,
+  isTsumo: boolean,
+  loser?: number,
+  riichiSticks?: number,
+): Payment {
+  const riichiBonus = (riichiSticks ?? 0) * 1000;
+  
+  if (isTsumo) {
+    // ツモ時: 責任者が全額支払う
+    const totalPayment = payment.winnerGets - riichiBonus;
+    return {
+      from: [{ player: responsiblePlayer, amount: totalPayment }],
+      winnerGets: totalPayment + riichiBonus,
+    };
+  }
+  
+  // ロン時
+  if (loser === undefined) return payment;
+  
+  if (loser === responsiblePlayer) {
+    // 責任者自身が放銃: 責任者が全額支払う（通常と同じ）
+    return payment;
+  }
+  
+  // 第三者が放銃: 放銃者と責任者で折半
+  const totalPayment = payment.winnerGets - riichiBonus;
+  const half = Math.ceil(totalPayment / 2 / 100) * 100;
+  return {
+    from: [
+      { player: loser, amount: half },
+      { player: responsiblePlayer, amount: half },
+    ],
+    winnerGets: half * 2 + riichiBonus,
   };
 }
 
@@ -238,6 +308,10 @@ export interface ScoreParams {
   isTenhou?: boolean;
   isChiihou?: boolean;
   loser?: number;
+  /** 責任払い: 責任者のプレイヤー番号 */
+  responsiblePlayer?: number;
+  /** 責任払い: 責任種別 */
+  responsibilityType?: 'daisangen' | 'daisuushii';
 }
 
 export function fullScore(params: ScoreParams): ScoreResult | null {
@@ -275,5 +349,7 @@ export function fullScore(params: ScoreParams): ScoreResult | null {
     params.doraIndicators,
     params.uraDoraIndicators,
     params.loser,
+    params.responsiblePlayer,
+    params.responsibilityType,
   );
 }

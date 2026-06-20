@@ -75,11 +75,38 @@ export {
   isKuikaeProhibited,
   kuikaeMessage,
   chiKuikaeProhibitedTiles,
+  detectResponsibility,
   isMeldClaimOption,
   findChiOptions,
   canPonTile,
   canDaiminkanTile,
 } from "./claimPhase.js";
+
+
+/** プレイヤーの副露から責任払い情報を抽出 */
+export function getResponsibilityInfo(melds: readonly Meld[]): {
+  responsiblePlayer?: number;
+  responsibilityType?: 'daisangen' | 'daisuushii';
+} {
+  for (const meld of melds) {
+    if (meld.responsibility && meld.calledFrom !== undefined) {
+      return {
+        responsiblePlayer: meld.calledFrom,
+        responsibilityType: meld.responsibility,
+      };
+    }
+  }
+  return {};
+}
+
+
+/** 責任払いメッセージを生成（表示用） */
+export function formatResponsibilityMessage(
+  responsiblePlayer: number,
+  _responsibilityType: 'daisangen' | 'daisuushii',
+): string {
+  return `責任払い: P${responsiblePlayer + 1}`;
+}
 
 // Reducer
 export { gameReducer } from "./reducer.js";

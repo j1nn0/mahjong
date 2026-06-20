@@ -51,6 +51,8 @@ export interface RoundHistoryItem {
   roundName: string;
   resultText: string;
   pointChanges: readonly number[];
+  /** 責任払いの説明（例: "責任払い: P2"）。未発生時は undefined */
+  responsibilityMessage?: string;
 }
 
 export interface GameState {

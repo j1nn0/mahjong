@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { detectYaku, totalHan, totalYakuman, YakuId } from '../game/yaku.js';
 import { fullScore } from '../game/scoring.js';
-import { Suit, type Tile, type Meld } from '../game/types.js';
+import { Suit, MeldType, type Tile, type Meld } from '../game/types.js';
 
 // ── Tile helpers ───────────────────────────────────────────────────
 
@@ -565,4 +565,214 @@ describe('fu calculation details', () => {
     expect(score!.yaku.some((y) => y.id === YakuId.Pinfu)).toBe(false);
     expect(score!.fu).toBe(30);
   });
+});
+
+// ── Responsibility payment (責任払い) ─────────────────────────────
+
+describe("responsibility payment (責任払い)", () => {
+  function haku(): Tile {
+    return { suit: Suit.Dragon, value: 0 };
+  }
+  function hatsu(): Tile {
+    return { suit: Suit.Dragon, value: 1 };
+  }
+  function chun(): Tile {
+    return { suit: Suit.Dragon, value: 2 };
+  }
+  // Reserved for daisuushii tests:
+  // function ton(): Tile { return { suit: Suit.Wind, value: 0 }; }
+  // function nan(): Tile { return { suit: Suit.Wind, value: 1 }; }
+  // function sha(): Tile { return { suit: Suit.Wind, value: 2 }; }
+  // function pei(): Tile { return { suit: Suit.Wind, value: 3 }; }
+
+
+  it("makes responsible player pay full amount on tsumo (daisangen)", () => {
+    // Winner (P0) has daisangen with responsibility on P2
+    // P0 tsumos → P2 pays full amount
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 3 };
+    const chunPon: Meld = { type: MeldType.Poon, tiles: [chun(), chun(), chun()], calledTile: chun(), calledFrom: 2, responsibility: 'daisangen' };
+
+    // 3 dragon pons in melds (haku, hatsu, chun) → 9 tiles
+    // closedTiles (4) + winTile (1) = 5 tiles = 1 meld + 1 pair
+    // [m1, m1, m1, m2] + winTile m2 → triplet [m1×3] + pair [m2×2]
+    const closed = [m(1), m(1), m(1), m(2)];
+    const winTile = m(2);
+
+    const score = fullScore({
+      closedTiles: closed,
+      melds: [hakuPon, hatsuPon, chunPon],
+      winTile,
+      isTsumo: true,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+      dealer: 0,
+      responsiblePlayer: 2,
+      responsibilityType: 'daisangen',
+    });
+
+    expect(score).not.toBeNull();
+    expect(score!.yakuman).toBe(1);
+    expect(score!.payment.from).toHaveLength(1);
+    expect(score!.payment.from[0]!.player).toBe(2); // P2 is responsible
+    expect(score!.payment.from[0]!.amount).toBe(score!.score); // full amount (minus riichi bonus which is 0)
+  });
+
+  it("splits payment between discarder and responsible player on ron from third party (daisangen)", () => {
+    // Winner (P0) has daisangen with responsibility on P2
+    // P1 (third party) discards, P0 rons → P1 and P2 split payment
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 3 };
+    const chunPon: Meld = { type: MeldType.Poon, tiles: [chun(), chun(), chun()], calledTile: chun(), calledFrom: 2, responsibility: 'daisangen' };
+
+    const closed = [m(1), m(1), m(1), m(2)];
+    const winTile = m(2);
+
+    const score = fullScore({
+      closedTiles: closed,
+      melds: [hakuPon, hatsuPon, chunPon],
+      winTile,
+      isTsumo: false,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+      dealer: 0,
+      loser: 1,
+      responsiblePlayer: 2,
+      responsibilityType: 'daisangen',
+    });
+
+    expect(score).not.toBeNull();
+    expect(score!.yakuman).toBe(1);
+    expect(score!.payment.from).toHaveLength(2);
+    // P1 (discarder) and P2 (responsible) each pay half
+    const payer1 = score!.payment.from.find((f) => f.player === 1);
+    const payer2 = score!.payment.from.find((f) => f.player === 2);
+    expect(payer1).toBeDefined();
+    expect(payer2).toBeDefined();
+    expect(payer1!.amount + payer2!.amount).toBe(score!.score);
+  });
+
+  it("makes responsible player pay full on ron when responsible player is the discarder", () => {
+    // Winner (P0) has daisangen with responsibility on P2
+    // P2 (responsible) discards, P0 rons → P2 pays full (normal ron)
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 3 };
+    const chunPon: Meld = { type: MeldType.Poon, tiles: [chun(), chun(), chun()], calledTile: chun(), calledFrom: 2, responsibility: 'daisangen' };
+
+    const closed = [m(1), m(1), m(1), m(2)];
+    const winTile = m(2);
+
+    const score = fullScore({
+      closedTiles: closed,
+      melds: [hakuPon, hatsuPon, chunPon],
+      winTile,
+      isTsumo: false,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+      dealer: 0,
+      loser: 2,
+      responsiblePlayer: 2,
+      responsibilityType: 'daisangen',
+    });
+
+    expect(score).not.toBeNull();
+    expect(score!.yakuman).toBe(1);
+    expect(score!.payment.from).toHaveLength(1);
+    expect(score!.payment.from[0]!.player).toBe(2); // P2 pays full
+  });
+
+  it("does NOT adjust payment when responsibility type does not match yakuman", () => {
+    // Winner has daisangen but responsibility is daisuushii → no adjustment
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 3 };
+    const chunPon: Meld = { type: MeldType.Poon, tiles: [chun(), chun(), chun()], calledTile: chun(), calledFrom: 2, responsibility: 'daisangen' };
+
+    const closed = [m(1), m(1), m(1), m(2)];
+    const winTile = m(2);
+
+    const score = fullScore({
+      closedTiles: closed,
+      melds: [hakuPon, hatsuPon, chunPon],
+      winTile,
+      isTsumo: true,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+      dealer: 0,
+      responsiblePlayer: 2,
+      responsibilityType: 'daisuushii', // mismatch!
+    });
+
+    expect(score).not.toBeNull();
+    // Should be normal tsumo payment (3 payers), not responsibility
+    expect(score!.payment.from).toHaveLength(3);
+  });
+
+  it("does NOT adjust payment when no responsibility info provided", () => {
+    // Same hand but no responsibility params → normal payment
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 3 };
+    const chunPon: Meld = { type: MeldType.Poon, tiles: [chun(), chun(), chun()], calledTile: chun(), calledFrom: 2, responsibility: 'daisangen' };
+
+    const closed = [m(1), m(1), m(1), m(2)];
+    const winTile = m(2);
+
+    const score = fullScore({
+      closedTiles: closed,
+      melds: [hakuPon, hatsuPon, chunPon],
+      winTile,
+      isTsumo: true,
+      roundWind: 0,
+      playerSeat: 0,
+      isRiichi: false,
+      isDoubleRiichi: false,
+      isIppatsu: false,
+      isHaitei: false,
+      isHoutei: false,
+      isRinshan: false,
+      isChankan: false,
+      riichiSticks: 0,
+      honba: 0,
+      dealer: 0,
+    });
+
+    expect(score).not.toBeNull();
+    expect(score!.payment.from).toHaveLength(3); // normal tsumo
+  });
+
 });

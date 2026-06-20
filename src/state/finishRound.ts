@@ -11,6 +11,7 @@ import type {
   ClaimOption,
 } from "./types.js";
 import {
+  getResponsibilityInfo,
   isSameTileKind,
   tileKindKey,
   isYaochu,
@@ -166,6 +167,7 @@ export function ronScore(state: GameState, winner: number): ScoreResult | null {
   if (!isCompleteHand(state.players[winner].hand, state.players[winner].melds, winTile)) {
     return null;
   }
+  const resp = getResponsibilityInfo(state.players[winner].melds);
   return fullScore({
     closedTiles: state.players[winner].hand,
     melds: state.players[winner].melds,
@@ -185,6 +187,7 @@ export function ronScore(state: GameState, winner: number): ScoreResult | null {
     isRinshan: false,
     isChankan: state.lastDiscardWasChankan,
     loser: state.lastDiscard.player,
+    ...resp,
   });
 }
 
@@ -198,44 +201,31 @@ export function ronClaimPlayers(state: GameState): number[] {
 export function applyRonPayment(
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
   winner: number,
-  discarder: number,
+  _discarder: number,
   score: ScoreResult,
-  riichiSticks: number,
+  _riichiSticks: number,
 ): [PlayerData, PlayerData, PlayerData, PlayerData] {
-  const loserPays = score.score - riichiSticks * 1000;
-  const afterLoser = updatePlayerInTuple(
-    players,
-    discarder,
-    updPlayer(players[discarder], {
-      points: players[discarder].points - loserPays,
-    }),
-  );
-  return updatePlayerInTuple(
-    afterLoser,
-    winner,
-    updPlayer(afterLoser[winner], {
-      points: afterLoser[winner].points + score.score,
-    }),
-  );
+  return players.map((player, i) => {
+    if (i === winner) return updPlayer(player, { points: player.points + score.score });
+    const payment = score.payment.from.find((entry) => entry.player === i);
+    return updPlayer(player, { points: player.points - (payment?.amount ?? 0) });
+  }) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
 }
 
 export function applyDoubleRonPayments(
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
   winners: readonly [number, number],
-  discarder: number,
+  _discarder: number,
   scores: readonly [ScoreResult, ScoreResult],
   riichiReceiver: number,
   riichiSticks: number,
 ): [PlayerData, PlayerData, PlayerData, PlayerData] {
   let updated = players as [PlayerData, PlayerData, PlayerData, PlayerData];
-  let loserPays = 0;
   for (let i = 0; i < winners.length; i++) {
     const winner = winners[i]!;
     const score = scores[i]!;
     const receivesRiichi = winner === riichiReceiver;
-    const ronPayment = score.score - riichiSticks * 1000;
-    const winnerGain = receivesRiichi ? score.score : ronPayment;
-    loserPays += ronPayment;
+    const winnerGain = receivesRiichi ? score.score : score.score - riichiSticks * 1000;
     updated = updatePlayerInTuple(
       updated,
       winner,
@@ -243,14 +233,17 @@ export function applyDoubleRonPayments(
         points: updated[winner].points + winnerGain,
       }),
     );
+    for (const payment of score.payment.from) {
+      updated = updatePlayerInTuple(
+        updated,
+        payment.player,
+        updPlayer(updated[payment.player], {
+          points: updated[payment.player].points - payment.amount,
+        }),
+      );
+    }
   }
-  return updatePlayerInTuple(
-    updated,
-    discarder,
-    updPlayer(updated[discarder], {
-      points: updated[discarder].points - loserPays,
-    }),
-  );
+  return updated;
 }
 
 // ── Tsumo payment ───────────────────────────────────────────────────
@@ -399,6 +392,7 @@ export function finishRound(
   dealerContinues: boolean,
   score: ScoreResult | null,
   message: string,
+  responsibilityMessage?: string,
 ): GameState {
   const nextDealer = dealerContinues ? state.dealer : (state.dealer + 1) % 4;
   const nextRoundNumber = dealerContinues ? state.roundNumber : state.roundNumber + 1;
@@ -409,6 +403,12 @@ export function finishRound(
     dealerContinues && state.roundNumber >= 4 && finalRanking[0] === state.dealer;
   const isTobi = players.some((p) => p.points < 0);
   const matchEnded = isTobi || (state.roundNumber >= 4 && (!dealerContinues || finalDealerTop));
+  const resultText = score
+    ? `和了: ${score.yakuman > 0 ? (score.yakuman === 1 ? "役満" : "ダブル役満") : score.limit && score.limit !== "none" ? { mangan: "満貫", haneman: "跳満", baiman: "倍満", sanbaiman: "三倍満", yakuman: "役満" }[score.limit] : `${score.han}飜${score.fu}符`}`
+    : (message.split("!")[0] ?? message); // e.g. "流局", "途中流局: 九種九牌"
+  const historyResultText = responsibilityMessage
+    ? `${resultText} [${responsibilityMessage}]`
+    : resultText;
   return {
     ...state,
     players,
@@ -428,15 +428,14 @@ export function finishRound(
     firstTurnInterrupted: false,
     pendingAbortiveDraw: null,
     calledDiscardKinds: emptyCalledDiscardKinds(),
-    message,
+    message: responsibilityMessage ? `${message} [${responsibilityMessage}]` : message,
     roundHistory: [
       ...state.roundHistory,
       {
         roundName: `${["東", "南", "西", "北"][state.roundWind]}${state.roundNumber}局 ${state.honba}本場`,
-        resultText: score
-          ? `和了: ${score.yakuman > 0 ? (score.yakuman === 1 ? "役満" : "ダブル役満") : score.limit && score.limit !== "none" ? { mangan: "満貫", haneman: "跳満", baiman: "倍満", sanbaiman: "三倍満", yakuman: "役満" }[score.limit] : `${score.han}飜${score.fu}符`}`
-          : (message.split("!")[0] ?? message), // e.g. "流局", "途中流局: 九種九牌"
+        resultText: historyResultText,
         pointChanges: players.map((p, i) => p.points - state.players[i].points),
+        ...(responsibilityMessage ? { responsibilityMessage } : {}),
       },
     ],
   };
@@ -468,6 +467,7 @@ export function canScoreTsumo(state: GameState, player: number, winTile: Tile): 
   const playerData = state.players[player];
   const closedTiles = closedTilesForTsumo(playerData.hand, winTile);
   if (!isCompleteHand(closedTiles, playerData.melds, winTile)) return false;
+  const resp = getResponsibilityInfo(playerData.melds);
   return (
     fullScore({
       closedTiles,
@@ -494,6 +494,7 @@ export function canScoreTsumo(state: GameState, player: number, winTile: Tile): 
         !state.firstTurnInterrupted &&
         playerData.discards.length === 0 &&
         playerData.melds.length === 0,
+      ...resp,
     }) !== null
   );
 }

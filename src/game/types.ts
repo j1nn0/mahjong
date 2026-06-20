@@ -57,6 +57,10 @@ export interface Meld {
   tiles: readonly Tile[];
   /** チーの場合、どの牌を他家からもらったか（順序維持のため） */
   calledTile?: Tile;
+  /** 鳴いた牌の打牌者（0-3）。ポン・大明カン・チーで設定 */
+  calledFrom?: number;
+  /** 責任払いの種類（包成立時に設定） */
+  responsibility?: 'daisangen' | 'daisuushii';
 }
 
 export interface Hand {

@@ -7,9 +7,12 @@ import {
   processAiTurn,
   normalizeGameState,
   canDeclareKyuushuKyuuhai,
+  applyRonPayment,
+  applyDoubleRonPayments,
 } from "./GameState.js";
 import type { GameState, PlayerData } from "./GameState.js";
 import { MeldType, Suit, type Tile, type Meld, type Discard, PlayerWind } from "../game/types.js";
+import type { ScoreResult } from "../game/scoring.js";
 import { YakuId } from "../game/yaku.js";
 
 function m(v: number): Tile {
@@ -2622,4 +2625,318 @@ describe("riichi discard marking", () => {
     const next = gameReducer(state, { type: "SET_MESSAGE", message: "テストエラー" });
     expect(next.message).toBe("テストエラー");
   });
+});
+
+// ── Responsibility payment (責任払い) ─────────────────────────────
+
+describe("responsibility payment (責任払い)", () => {
+  function haku(): Tile {
+    return { suit: Suit.Dragon, value: 0 };
+  }
+  function hatsu(): Tile {
+    return { suit: Suit.Dragon, value: 1 };
+  }
+  function chun(): Tile {
+    return { suit: Suit.Dragon, value: 2 };
+  }
+
+  it("applies a third-party ron payment to both the discarder and responsible player", () => {
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const score: ScoreResult = {
+      yaku: [],
+      han: 0,
+      yakuman: 1,
+      fu: 0,
+      basePoints: 32000,
+      doraHan: 0,
+      limit: "yakuman",
+      score: 33000,
+      payment: {
+        from: [
+          { player: 1, amount: 16000 },
+          { player: 2, amount: 16000 },
+        ],
+        winnerGets: 33000,
+      },
+    };
+
+    const result = applyRonPayment(players, 0, 1, score, 1);
+
+    expect(result.map((player) => player.points)).toEqual([58000, 9000, 9000, 25000]);
+  });
+
+  it("applies each winner's payment sources during double ron", () => {
+    const players = makePlayers(
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const responsibilityScore: ScoreResult = {
+      yaku: [], han: 0, yakuman: 1, fu: 0, basePoints: 32000, doraHan: 0,
+      limit: "yakuman", score: 33000,
+      payment: {
+        from: [{ player: 1, amount: 16000 }, { player: 2, amount: 16000 }],
+        winnerGets: 33000,
+      },
+    };
+    const ordinaryScore: ScoreResult = {
+      yaku: [], han: 5, yakuman: 0, fu: 30, basePoints: 2000, doraHan: 0,
+      limit: "mangan", score: 9000,
+      payment: { from: [{ player: 1, amount: 8000 }], winnerGets: 9000 },
+    };
+
+    const result = applyDoubleRonPayments(
+      players,
+      [0, 3],
+      1,
+      [responsibilityScore, ordinaryScore],
+      0,
+      1,
+    );
+
+    expect(result.map((player) => player.points)).toEqual([58000, 1000, 9000, 33000]);
+  });
+
+  it("shows and records the responsible player after ron", () => {
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 3 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 1 };
+    const chunPon: Meld = {
+      type: MeldType.Poon,
+      tiles: [chun(), chun(), chun()],
+      calledTile: chun(),
+      calledFrom: 2,
+      responsibility: "daisangen",
+    };
+    const players = makePlayers(
+      { ...makeTestPlayer([m(1), m(1), m(1), m(2)]), melds: [hakuPon, hatsuPon, chunPon] },
+      makeTestPlayer([m(2)]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      dealer: 3,
+      phase: "claiming",
+      players,
+      lastDiscard: { tile: m(2), player: 1 },
+      claimOptions: [],
+    });
+
+    const result = gameReducer(state, { type: "RON", winner: 0 });
+
+    expect(result.players.map((player) => player.points)).toEqual([57000, 9000, 9000, 25000]);
+    expect(result.message).toContain("責任払い: P3");
+    expect(result.roundHistory.at(-1)?.responsibilityMessage).toBe("責任払い: P3");
+    expect(result.roundHistory.at(-1)?.resultText).toContain("責任払い: P3");
+  });
+
+  it("shows and records the responsible player after tsumo", () => {
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 3 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 1 };
+    const chunPon: Meld = {
+      type: MeldType.Poon,
+      tiles: [chun(), chun(), chun()],
+      calledTile: chun(),
+      calledFrom: 2,
+      responsibility: "daisangen",
+    };
+    const players = makePlayers(
+      { ...makeTestPlayer([m(1), m(1), m(1), m(2), m(2)]), melds: [hakuPon, hatsuPon, chunPon] },
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      dealer: 3,
+      currentPlayer: 0,
+      phase: "playing",
+      players,
+      lastDrawnTile: m(2),
+      firstTurnInterrupted: true,
+    });
+
+    const result = gameReducer(state, { type: "TSUMO", player: 0 });
+
+    expect(result.players.map((player) => player.points)).toEqual([57000, 25000, -7000, 25000]);
+    expect(result.message).toContain("責任払い: P3");
+    expect(result.roundHistory.at(-1)?.responsibilityMessage).toBe("責任払い: P3");
+  });
+
+  it("shows responsibility when only the second double-ron winner is responsible", () => {
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 2 };
+    const chunPon: Meld = {
+      type: MeldType.Poon,
+      tiles: [chun(), chun(), chun()],
+      calledTile: chun(),
+      calledFrom: 3,
+      responsibility: "daisangen",
+    };
+    const players = makePlayers(
+      { ...makeTestPlayer([m(1), m(1), m(1), p(5)]), melds: [hakuPon, hatsuPon, chunPon] },
+      makeTestPlayer([p(5)]),
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      dealer: 3,
+      phase: "claiming",
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: collectClaims(p(5), 1, players),
+    });
+
+    const result = gameReducer(state, { type: "RON", winner: 2 });
+
+    expect(result.message).toContain("責任払い: P4");
+    expect(result.roundHistory.at(-1)?.responsibilityMessage).toBe("責任払い: P4");
+  });
+
+  it("records calledFrom on a pon meld", () => {
+    // P0 discards haku, P1 pons it
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3), p(5), p(6), p(7), haku()]),
+        makeTestPlayer([haku(), haku(), m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3), p(5), p(6)]),
+        makeTestPlayer([m(1)]),
+        makeTestPlayer([m(1)]),
+      ),
+    });
+
+    const afterDiscard = gameReducer(state, { type: "DISCARD", player: 0, tile: haku() });
+    expect(afterDiscard.phase).toBe("claiming");
+
+    const afterPon = gameReducer(afterDiscard, { type: "PON", player: 1 });
+    expect(afterPon.phase).toBe("playing");
+
+    const ponMeld = afterPon.players[1].melds[0]!;
+    expect(ponMeld.type).toBe(MeldType.Poon);
+    expect(ponMeld.calledFrom).toBe(0); // P0 discarded the tile
+  });
+
+  it("marks daisangen responsibility when pon completes 3rd dragon with 2 open dragon melds", () => {
+    // P1 already has 2 open dragon melds (haku pon, hatsu pon)
+    // P0 discards chun, P1 pons → daisangen responsibility
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 3 };
+
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3), p(5), p(6), p(7), chun()]),
+        { ...makeTestPlayer([chun(), chun(), m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3)]), melds: [hakuPon, hatsuPon] },
+        makeTestPlayer([m(1)]),
+        makeTestPlayer([m(1)]),
+      ),
+    });
+
+    const afterDiscard = gameReducer(state, { type: "DISCARD", player: 0, tile: chun() });
+    expect(afterDiscard.phase).toBe("claiming");
+
+    const afterPon = gameReducer(afterDiscard, { type: "PON", player: 1 });
+    expect(afterPon.phase).toBe("playing");
+
+    // The new pon meld should have responsibility marked
+    const newMeld = afterPon.players[1].melds[2]!;
+    expect(newMeld.type).toBe(MeldType.Poon);
+    expect(newMeld.responsibility).toBe("daisangen");
+    expect(newMeld.calledFrom).toBe(0);
+  });
+
+  it("marks daisangen responsibility when daiminkan completes the 3rd dragon meld", () => {
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+    const hatsuPon: Meld = { type: MeldType.Poon, tiles: [hatsu(), hatsu(), hatsu()], calledTile: hatsu(), calledFrom: 3 };
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3), p(5), p(6), p(7), chun()]),
+        { ...makeTestPlayer([chun(), chun(), chun(), m(1), m(2), m(3), p(1), p(2), p(3), s(1)]), melds: [hakuPon, hatsuPon] },
+        makeTestPlayer([m(1)]),
+        makeTestPlayer([m(1)]),
+      ),
+    });
+
+    const afterDiscard = gameReducer(state, { type: "DISCARD", player: 0, tile: chun() });
+    const afterKan = gameReducer(afterDiscard, { type: "DAIMINKAN", player: 1 });
+
+    expect(afterKan.players[1].melds[2]).toMatchObject({
+      type: MeldType.Kan,
+      calledFrom: 0,
+      responsibility: "daisangen",
+    });
+  });
+
+
+
+
+  it("marks daisuushii responsibility when pon completes 4th wind with 3 open wind melds", () => {
+    const tonPon: Meld = { type: MeldType.Poon, tiles: [ton(), ton(), ton()], calledTile: ton(), calledFrom: 2 };
+    const nanPon: Meld = { type: MeldType.Poon, tiles: [nan(), nan(), nan()], calledTile: nan(), calledFrom: 3 };
+    const shaPon: Meld = { type: MeldType.Poon, tiles: [sha(), sha(), sha()], calledTile: sha(), calledFrom: 2 };
+
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3), p(5), p(6), p(7), pei()]),
+        { ...makeTestPlayer([pei(), pei(), m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3)]), melds: [tonPon, nanPon, shaPon] },
+        makeTestPlayer([m(1)]),
+        makeTestPlayer([m(1)]),
+      ),
+    });
+
+    const afterDiscard = gameReducer(state, { type: "DISCARD", player: 0, tile: pei() });
+    expect(afterDiscard.phase).toBe("claiming");
+
+    const afterPon = gameReducer(afterDiscard, { type: "PON", player: 1 });
+    expect(afterPon.phase).toBe("playing");
+
+    const newMeld = afterPon.players[1].melds[3]!;
+    expect(newMeld.type).toBe(MeldType.Poon);
+    expect(newMeld.responsibility).toBe("daisuushii");
+    expect(newMeld.calledFrom).toBe(0);
+  });
+
+  it("does NOT mark responsibility when only 1 open dragon meld exists", () => {
+    const hakuPon: Meld = { type: MeldType.Poon, tiles: [haku(), haku(), haku()], calledTile: haku(), calledFrom: 2 };
+
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3), p(5), p(6), p(7), hatsu()]),
+        { ...makeTestPlayer([hatsu(), hatsu(), m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3)]), melds: [hakuPon] },
+        makeTestPlayer([m(1)]),
+        makeTestPlayer([m(1)]),
+      ),
+    });
+
+    const afterDiscard = gameReducer(state, { type: "DISCARD", player: 0, tile: hatsu() });
+    const afterPon = gameReducer(afterDiscard, { type: "PON", player: 1 });
+
+    const newMeld = afterPon.players[1].melds[1]!;
+    expect(newMeld.responsibility).toBeUndefined();
+  });
+
+  it("does NOT mark responsibility for closed kan", () => {
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        makeTestPlayer([haku(), haku(), haku(), haku(), m(1), m(2), m(3), p(1), p(2), p(3), s(1), s(2), s(3)]),
+        makeTestPlayer([m(1)]),
+        makeTestPlayer([m(1)]),
+        makeTestPlayer([m(1)]),
+      ),
+    });
+
+    const afterKan = gameReducer(state, { type: "ANKAN", player: 0, tile: haku() });
+    const kanMeld = afterKan.players[0].melds[0]!;
+    expect(kanMeld.type).toBe(MeldType.ClosedKan);
+    expect(kanMeld.responsibility).toBeUndefined();
+  });
+
 });

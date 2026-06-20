@@ -46,6 +46,7 @@ export function findChiOptions(
   discarded: Tile,
   hand: readonly Tile[],
   playerNum: number,
+  discarder: number,
 ): readonly ClaimOption[] {
   if (discarded.suit === Suit.Wind || discarded.suit === Suit.Dragon) return [];
   const value = discarded.value as number;
@@ -67,6 +68,7 @@ export function findChiOptions(
         type: MeldType.Chi,
         tiles: sortHand([...meldTiles]),
         calledTile: discarded,
+        calledFrom: discarder,
       };
       options.push({
         type: "chi",
@@ -116,7 +118,7 @@ export function collectClaims(
     if (canPonTile(discarded, hand)) {
       const pair = hand.filter((t) => isSameTile(t, discarded)).slice(0, 2);
       const meldTiles = [...pair, discarded];
-      const meld: Meld = { type: MeldType.Poon, tiles: meldTiles, calledTile: discarded };
+      const meld: Meld = { type: MeldType.Poon, tiles: meldTiles, calledTile: discarded, calledFrom: discarder };
       options.push({
         type: "pon",
         player: i,
@@ -129,7 +131,7 @@ export function collectClaims(
     if (canDaiminkanTile(discarded, hand)) {
       const triple = hand.filter((t) => isSameTile(t, discarded)).slice(0, 3);
       const meldTiles = [...triple, discarded];
-      const meld: Meld = { type: MeldType.Kan, tiles: meldTiles, calledTile: discarded };
+      const meld: Meld = { type: MeldType.Kan, tiles: meldTiles, calledTile: discarded, calledFrom: discarder };
       options.push({
         type: "daiminkan",
         player: i,
@@ -140,10 +142,58 @@ export function collectClaims(
       });
     }
     if (i === (discarder + 1) % 4) {
-      options.push(...findChiOptions(discarded, hand, i));
+      options.push(...findChiOptions(discarded, hand, i, discarder));
     }
   }
   return options;
+}
+
+
+// ── Responsibility detection (責任払い) ───────────────────────────
+
+export type ResponsibilityType = 'daisangen' | 'daisuushii';
+
+/** ポン/大明カン時に責任払いが成立するか判定し、成立する場合は責任種別を返す */
+export function detectResponsibility(
+  playerMelds: readonly Meld[],
+  newMeld: Meld,
+  calledTile: Tile,
+): ResponsibilityType | null {
+  // 暗槓は対象外
+  if (newMeld.type === MeldType.ClosedKan) return null;
+
+  const suit = calledTile.suit;
+  const value = calledTile.value as number;
+
+  // 大三元チェック: 三元牌のポン/大明カン
+  if (suit === Suit.Dragon) {
+    const openDragonMelds = playerMelds.filter(
+      (m) => m.type !== MeldType.ClosedKan &&
+        m.tiles[0]!.suit === Suit.Dragon,
+    );
+    const existingTypes = new Set(openDragonMelds.map((m) => m.tiles[0]!.value));
+    // 既存で2種類カバーしていて、今回が3種類目
+    if (existingTypes.size >= 2 && !existingTypes.has(value)) {
+      const allTypes = new Set([...existingTypes, value]);
+      if (allTypes.size >= 3) return 'daisangen';
+    }
+  }
+
+  // 大四喜チェック: 風牌のポン/大明カン
+  if (suit === Suit.Wind) {
+    const openWindMelds = playerMelds.filter(
+      (m) => m.type !== MeldType.ClosedKan &&
+        m.tiles[0]!.suit === Suit.Wind,
+    );
+    const existingTypes = new Set(openWindMelds.map((m) => m.tiles[0]!.value));
+    // 既存で3種類カバーしていて、今回が4種類目
+    if (existingTypes.size >= 3 && !existingTypes.has(value)) {
+      const allTypes = new Set([...existingTypes, value]);
+      if (allTypes.size >= 4) return 'daisuushii';
+    }
+  }
+
+  return null;
 }
 
 // ── Clear temporary furiten and ippatsu ────────────────────────────

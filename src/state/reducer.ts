@@ -21,6 +21,7 @@ import {
   closedTilesForTsumo,
 } from "./finishRound.js";
 import {
+  detectResponsibility,
   collectClaims,
   clearTemporaryFuritenAndIppatsu,
   isKuikaeProhibited,
@@ -29,6 +30,8 @@ import {
   isMeldClaimOption,
 } from "./claimPhase.js";
 import {
+  getResponsibilityInfo,
+  formatResponsibilityMessage,
   removeDiscardByTile,
   removeOneTile,
   roundName,
@@ -265,9 +268,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         newHand = removeOneTile(newHand, t);
       }
       // Update claimant: hand + melds
+      const resp = detectResponsibility(player.melds, option.meld, option.calledTile);
+      const responsibleMeld = resp ? { ...option.meld, responsibility: resp } : option.meld;
       const claimantUpd = updPlayer(player, {
         hand: sortHand(newHand),
-        melds: [...player.melds, option.meld],
+        melds: [...player.melds, responsibleMeld],
       });
       let newPlayers = clearTemporaryFuritenAndIppatsu(
         updatePlayerInTuple(state.players, option.player, claimantUpd),
@@ -320,9 +325,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       for (const t of fromHand) {
         newHand = removeOneTile(newHand, t);
       }
+      const resp = detectResponsibility(player.melds, option.meld, option.calledTile);
+      const responsibleMeld = resp ? { ...option.meld, responsibility: resp } : option.meld;
       const claimantUpd = updPlayer(player, {
         hand: sortHand(newHand),
-        melds: [...player.melds, option.meld],
+        melds: [...player.melds, responsibleMeld],
       });
       let newPlayers = clearTemporaryFuritenAndIppatsu(
         updatePlayerInTuple(state.players, option.player, claimantUpd),
@@ -377,9 +384,11 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       for (const t of fromHand) {
         newHand = removeOneTile(newHand, t);
       }
+      const resp = detectResponsibility(player.melds, option.meld, option.calledTile);
+      const responsibleMeld = resp ? { ...option.meld, responsibility: resp } : option.meld;
       const claimantUpd = updPlayer(player, {
         hand: sortHand(newHand),
-        melds: [...player.melds, option.meld],
+        melds: [...player.melds, responsibleMeld],
       });
       let newPlayers = clearTemporaryFuritenAndIppatsu(
         updatePlayerInTuple(state.players, option.player, claimantUpd),
@@ -738,6 +747,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         const scoreSummary = doubleScores
           .map((score) => `${score.fu}符${score.han}飜 ${score.score}点`)
           .join(" / ");
+        const respMsgD = [...new Set(doubleWinners.flatMap((winner) => {
+          const info = getResponsibilityInfo(state.players[winner].melds);
+          return info.responsiblePlayer !== undefined && info.responsibilityType
+            ? [formatResponsibilityMessage(info.responsiblePlayer, info.responsibilityType)]
+            : [];
+        }))].join(" / ");
         return finishRound(
           state,
           players1,
@@ -746,6 +761,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           doubleWinners.includes(state.dealer),
           doubleScores[0],
           `${names}がダブロン! ${scoreSummary}`,
+          respMsgD || undefined,
         );
       }
       const winner = winners[0]!;
@@ -758,6 +774,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         state.riichiSticks,
       );
       const yakuStr = score.yaku.map((y) => y.name).join("\u30FB");
+      const respInfo = getResponsibilityInfo(state.players[winner].melds);
+      const respMessage = respInfo.responsiblePlayer !== undefined && respInfo.responsibilityType
+        ? formatResponsibilityMessage(respInfo.responsiblePlayer, respInfo.responsibilityType)
+        : undefined;
       return finishRound(
         state,
         players1,
@@ -766,6 +786,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         winner === state.dealer,
         score,
         `${winner === 0 ? "\u3042\u306A\u305F" : `プレイヤー${winner + 1}`}がロン! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
+        respMessage,
       );
     }
     case "TSUMO": {
@@ -776,6 +797,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       if (!isCompleteHand(closedTiles, state.players[player].melds, winTile)) {
         return { ...state, message: "\u30C4\u30E2\u548C\u4E86\u3067\u304D\u307E\u305B\u3093" };
       }
+      const resp = getResponsibilityInfo(state.players[player].melds);
       const score = fullScore({
         closedTiles: closedTilesForTsumo(state.players[player].hand, winTile),
         melds: state.players[player].melds,
@@ -803,6 +825,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
           !state.firstTurnInterrupted &&
           state.players[player].discards.length === 0 &&
           state.players[player].melds.length === 0,
+        ...resp,
       });
       if (!score) {
         return {
@@ -812,6 +835,9 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       }
       const updatedTsPlayers = applyTsumoPayment(state.players, player, score);
       const yakuStr = score.yaku.map((y) => y.name).join("\u30FB");
+      const respMessage = resp.responsiblePlayer !== undefined && resp.responsibilityType
+        ? formatResponsibilityMessage(resp.responsiblePlayer, resp.responsibilityType)
+        : undefined;
       return finishRound(
         state,
         updatedTsPlayers,
@@ -820,6 +846,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         player === state.dealer,
         score,
         `${player === 0 ? "\u3042\u306A\u305F" : `プレイヤー${player + 1}`}がツモ和了! ${score.fu}符${score.han}飜 ${score.score}点 (${yakuStr})`,
+        respMessage,
       );
     }
     case "DECLARE_KYUUSHU_KYUUHAI":
