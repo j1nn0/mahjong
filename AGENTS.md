@@ -85,15 +85,3 @@ so reviewers can focus on the affected scenarios.
 Agents that need temporary files during their work must use the `.temp`
 directory at the project root, not `/tmp`. Create the directory if it does not
 exist, and clean up any temporary files when the task completes.
-
-## Additional Agent Docs
-
-This repository has runner-specific context-mode documentation.
-The matching runner-specific context-mode document is mandatory.
-
-- When running in Codex, read `CONTEXT-MODE.codex.md` before using or explaining context-mode.
-- When running in OpenCode, read `CONTEXT-MODE.opencode.md` before using or explaining context-mode.
-- When running in omp(oh-my-pi), read `CONTEXT-MODE.omp.md` before using or explaining context-mode.
-- When running in Antigravity, read `CONTEXT-MODE.agy.md` before using or explaining context-mode.
-- Do not apply the other runner's context-mode document unless explicitly requested.
-- If the current runner cannot be identified, follow only the common rules in this `AGENTS.md` and ask which runner-specific context-mode document should be used when the distinction matters.
