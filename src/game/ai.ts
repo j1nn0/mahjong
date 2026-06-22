@@ -4,17 +4,26 @@ import { findTenpaiTiles, tileToIndex, indexToTile, calcShanten } from './agari.
 
 // ── Suji helper ──────────────────────────────────────────────────────
 
-/** 数牌のsujiグループ: { [base: number]: number[] } */
-const sujiMap: Record<number, number[]> = {
-  1: [1, 4, 7], 4: [1, 4, 7], 7: [1, 4, 7],
-  2: [2, 5, 8], 5: [2, 5, 8], 8: [2, 5, 8],
-  3: [3, 6, 9], 6: [3, 6, 9], 9: [3, 6, 9],
-};
-
-/** 数牌のsujiグループ(インデックス版): 各インデックスに対応するsujiインデックス配列 */
-function sujiIndices(idx: number): number[] {
-  const base = idx % 9 + 1;
-  return (sujiMap[base] ?? []).map(v => Math.floor(idx / 9) * 9 + v - 1);
+/** 捨て牌から片スジ・中スジとして安全な数牌を求める。 */
+function computeSujiTiles(discards: readonly Tile[]): Set<number> {
+  const safe = new Set<number>();
+  const bySuit = new Map<Suit, Set<number>>();
+  for (const tile of discards) {
+    if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) continue;
+    const values = bySuit.get(tile.suit) ?? new Set<number>();
+    values.add(tile.value);
+    bySuit.set(tile.suit, values);
+  }
+  for (const [suit, values] of bySuit) {
+    const base = suit === Suit.Man ? 0 : suit === Suit.Pin ? 9 : 18;
+    if (values.has(4)) { safe.add(base); safe.add(base + 6); }
+    if (values.has(5)) { safe.add(base + 1); safe.add(base + 7); }
+    if (values.has(6)) { safe.add(base + 2); safe.add(base + 8); }
+    if (values.has(1) && values.has(7)) safe.add(base + 3);
+    if (values.has(2) && values.has(8)) safe.add(base + 4);
+    if (values.has(3) && values.has(9)) safe.add(base + 5);
+  }
+  return safe;
 }
 
 // ── Danger evaluation ────────────────────────────────────────────────
@@ -29,6 +38,7 @@ export function evaluateDanger(
   opponentRiichi: readonly boolean[],
   opponentMelds?: readonly (readonly Meld[])[],
   myHand?: readonly Tile[],
+  selfIndex?: number,
 ): number {
   const idx = tileToIndex(tile);
   let worst = 0;
@@ -50,6 +60,7 @@ export function evaluateDanger(
   }
 
   for (let p = 0; p < opponentDiscards.length; p++) {
+    if (selfIndex !== undefined && p === selfIndex) continue;
     const discards = opponentDiscards[p]!;
     const riichi = opponentRiichi[p] ?? false;
     const melds = opponentMelds ? (opponentMelds[p] ?? []) : [];
@@ -130,14 +141,7 @@ function dangerForPlayer(
       (d.value === 1 || d.value === 2 || d.value === 8 || d.value === 9)
     ).length;
 
-    const discardSuji = new Set<number>();
-    for (const d of discards) {
-      if (d.suit === Suit.Wind || d.suit === Suit.Dragon) continue;
-      const dIdx = tileToIndex(d);
-      for (const si of sujiIndices(dIdx)) {
-        discardSuji.add(si);
-      }
-    }
+    const discardSuji = computeSujiTiles(discards);
 
     if (tile.suit !== Suit.Wind && tile.suit !== Suit.Dragon) {
       if (discardSuji.has(idx)) {
@@ -164,6 +168,7 @@ function evaluateDiscards(
   opponentRiichi: readonly boolean[],
   prohibitedTiles: readonly Tile[] = [],
   opponentMelds?: readonly (readonly Meld[])[],
+  selfIndex?: number,
 ): Array<{ tile: Tile; tenpai: number[]; danger: number }> {
   const results: Array<{ tile: Tile; tenpai: number[]; danger: number }> = [];
 
@@ -171,7 +176,7 @@ function evaluateDiscards(
     if (prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) continue;
     const testHand = hand.filter(h => h !== t);
     const waits = findTenpaiTiles(testHand);
-    const danger = evaluateDanger(t, opponentDiscards, opponentRiichi, opponentMelds, hand);
+    const danger = evaluateDanger(t, opponentDiscards, opponentRiichi, opponentMelds, hand, selfIndex);
     results.push({ tile: t, tenpai: waits, danger });
   }
 
@@ -191,13 +196,14 @@ export function aiChooseDiscard(
   opponentRiichi: readonly boolean[],
   prohibitedTiles: readonly Tile[] = [],
   opponentMelds?: readonly (readonly Meld[])[],
+  selfIndex?: number,
 ): Tile {
   if (hand.length !== 14) {
     // 14枚でなければエラーだが、fallback
     return hand.find(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) ?? hand[0] ?? indexToTile(0);
   }
 
-  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi, prohibitedTiles, opponentMelds);
+  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi, prohibitedTiles, opponentMelds, selfIndex);
 
   // テンパイする候補に絞る
   const tenpaiCandidates = evals.filter(e => e.tenpai.length > 0);

@@ -500,6 +500,7 @@ export function processAiTurn(state: GameState): {
             state.players.map((p) => p.riichi),
             state.kuikaeProhibitedTiles,
             state.players.map((p) => p.melds),
+            state.currentPlayer,
           );
     const testHand = removeOneTile(player.hand, discard);
     if (
@@ -521,6 +522,7 @@ export function processAiTurn(state: GameState): {
       state.players.map((p) => p.riichi),
       state.kuikaeProhibitedTiles,
       state.players.map((p) => p.melds),
+      state.currentPlayer,
     );
     return { state, action: { type: "DISCARD", player: state.currentPlayer, tile: discard } };
   }

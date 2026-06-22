@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { aiChooseDiscard, evaluateDanger } from '../game/ai.js';
-import { Suit, Wind, type Tile } from '../game/types.js';
+import { MeldType, Suit, Wind, type Meld, type Tile } from '../game/types.js';
 
 function m(v: number, r?: boolean): Tile {
   return { suit: Suit.Man, value: v as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red: r ?? false };
@@ -66,6 +66,17 @@ describe('evaluateDanger', () => {
     expect(danger4Visible).toBeLessThanOrEqual(1);
   });
 
+  it('T-022: selfIndex指定時も自分の公開牌を字牌のvisibleCountに含める', () => {
+    const selfPon: Meld = { type: MeldType.Poon, tiles: [nan(), nan(), nan()], calledTile: nan() };
+    const fromDiscards = evaluateDanger(
+      nan(), [[nan(), nan(), nan()], []], [false, true], [[], []], [], 0,
+    );
+    const fromMeld = evaluateDanger(nan(), [[], []], [false, true], [[selfPon], []], [], 0);
+
+    expect(fromDiscards).toBe(2);
+    expect(fromMeld).toBe(2);
+  });
+
   it('raises danger of middle tiles when riichi opponent discarded many terminals', () => {
     // Opponent discarded terminal tiles: m(1), m(9), p(1), p(9)
     // Middle tile m(5) (non-suji) should have increased danger
@@ -96,6 +107,45 @@ describe('evaluateDanger', () => {
 
     const danger = evaluateDanger(s(5), [[]], [false], [melds], []);
     expect(danger).toBeGreaterThan(4);
+  });
+  it('T-022: 4が切られているとき1と7は片スジ（安全）', () => {
+    expect(evaluateDanger(m(1), [[m(4)]], [true])).toBe(2);
+    expect(evaluateDanger(m(7), [[m(4)]], [true])).toBe(2);
+  });
+
+  it('T-022: 1だけが切られているとき4や7はスジではない（危険）', () => {
+    expect(evaluateDanger(m(4), [[m(1)]], [true])).toBe(8);
+    expect(evaluateDanger(m(7), [[m(1)]], [true])).toBe(8);
+  });
+
+  it('T-022: 1と7の両方が切られているとき4は中スジ（安全）', () => {
+    expect(evaluateDanger(m(4), [[m(1), m(7)]], [true])).toBe(2);
+  });
+
+  it('T-022: 5が切られているとき2と8は片スジ（安全）', () => {
+    expect(evaluateDanger(m(2), [[m(5)]], [true])).toBe(2);
+    expect(evaluateDanger(m(8), [[m(5)]], [true])).toBe(2);
+  });
+
+  it('T-022: 6が切られているとき3と9は片スジ（安全）', () => {
+    expect(evaluateDanger(m(3), [[m(6)]], [true])).toBe(2);
+    expect(evaluateDanger(m(9), [[m(6)]], [true])).toBe(2);
+  });
+
+  it('T-022: スジは同じスートにのみ適用される', () => {
+    expect(evaluateDanger(p(1), [[m(4)]], [true])).toBe(8);
+  });
+
+  it('T-022: selfIndexで自分のリーチを危険度評価から除外する', () => {
+    const danger = evaluateDanger(
+      m(5), [[m(1)], [m(2)], [m(3)], []], [true, false, false, false], undefined, undefined, 0,
+    );
+    expect(danger).toBe(4);
+  });
+
+  it('T-022: selfIndex未指定時は従来通り全プレイヤーを評価する', () => {
+    const danger = evaluateDanger(m(5), [[m(1)], [m(2)], [m(3)], []], [true, false, false, false]);
+    expect(danger).toBe(8);
   });
 });
 
