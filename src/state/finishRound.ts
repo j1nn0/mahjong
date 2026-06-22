@@ -455,12 +455,13 @@ export function isCompleteHand(
   closedTiles: readonly Tile[],
   melds: readonly Meld[],
   winTile: Tile,
+  isTsumo = true,
 ): boolean {
   const allClosedTiles = [...closedTiles, winTile];
   if (melds.length === 0) {
     return isWinningHand(tilesToCounts(allClosedTiles));
   }
-  return decomposeStandardHand(allClosedTiles, melds) !== null;
+  return decomposeStandardHand(allClosedTiles, melds, winTile, isTsumo) !== null;
 }
 
 export function canScoreTsumo(state: GameState, player: number, winTile: Tile): boolean {

@@ -1,52 +1,52 @@
-import { Suit, Wind, Dragon, MeldType, type Tile, type Meld } from './types.js';
-import { tileToIndex, tilesToCounts } from './agari.js';
+import { Suit, Wind, Dragon, MeldType, type Tile, type Meld } from "./types.js";
+import { tileToIndex, tilesToCounts } from "./agari.js";
 
 // ── Yaku definitions ──────────────────────────────────────────────
 
 export enum YakuId {
-  Riichi = 'riichi',
-  Ippatsu = 'ippatsu',
-  Tenhou = 'tenhou',
-  Chiihou = 'chiihou',
-  MenzenTsumo = 'mentsumo',
-  Tanyao = 'tanyao',
-  Pinfu = 'pinfu',
-  Iipeiko = 'iipeiko',
-  Yakuhai = 'yakuhai',
-  Haitei = 'haitei',
-  Houtei = 'houtei',
-  Rinshan = 'rinshan',
-  Chankan = 'chankan',
-  DoubleRiichi = 'dblriichi',
-  Chiitoitsu = 'chiitoitsu',
-  Chanta = 'chanta',
-  Ittsuu = 'ittsuu',
-  SanshokuDoujun = 'sanshokudou',
-  Toitoi = 'toitoi',
-  Sanankou = 'sanankou',
-  SanshokuDoukou = 'sanshokudok',
-  Sankantsu = 'sankantsu',
-  Shousangen = 'shousangen',
-  Honroutou = 'honroutou',
-  Ryanpeiko = 'ryanpeiko',
-  Junchan = 'junchan',
-  Honitsu = 'honitsu',
-  Chinitsu = 'chinitsu',
+  Riichi = "riichi",
+  Ippatsu = "ippatsu",
+  Tenhou = "tenhou",
+  Chiihou = "chiihou",
+  MenzenTsumo = "mentsumo",
+  Tanyao = "tanyao",
+  Pinfu = "pinfu",
+  Iipeiko = "iipeiko",
+  Yakuhai = "yakuhai",
+  Haitei = "haitei",
+  Houtei = "houtei",
+  Rinshan = "rinshan",
+  Chankan = "chankan",
+  DoubleRiichi = "dblriichi",
+  Chiitoitsu = "chiitoitsu",
+  Chanta = "chanta",
+  Ittsuu = "ittsuu",
+  SanshokuDoujun = "sanshokudou",
+  Toitoi = "toitoi",
+  Sanankou = "sanankou",
+  SanshokuDoukou = "sanshokudok",
+  Sankantsu = "sankantsu",
+  Shousangen = "shousangen",
+  Honroutou = "honroutou",
+  Ryanpeiko = "ryanpeiko",
+  Junchan = "junchan",
+  Honitsu = "honitsu",
+  Chinitsu = "chinitsu",
   // Yakuman
-  Suuankou = 'suuankou',
-  Kokushi = 'kokushi',
-  DaiSanGen = 'daisangen',
-  Suushii = 'suushii',
-  TsuuIisou = 'tsuuiisou',
-  Ryuuiisou = 'ryuuiisou',
-  Chuuren = 'chuuren',
-  Chinroutou = 'chinroutou',
-  Suukantsu = 'suukantsu',
+  Suuankou = "suuankou",
+  Kokushi = "kokushi",
+  DaiSanGen = "daisangen",
+  Suushii = "suushii",
+  TsuuIisou = "tsuuiisou",
+  Ryuuiisou = "ryuuiisou",
+  Chuuren = "chuuren",
+  Chinroutou = "chinroutou",
+  Suukantsu = "suukantsu",
   // Double yakuman
-  Kokushi13 = 'kokushi13',
-  SuuankouTanki = 'suuankoutanki',
-  DaiSuushii = 'daisuushii',
-  Chuuren9 = 'chuuren9',
+  Kokushi13 = "kokushi13",
+  SuuankouTanki = "suuankoutanki",
+  DaiSuushii = "daisuushii",
+  Chuuren9 = "chuuren9",
 }
 
 interface YakuMeta {
@@ -58,47 +58,275 @@ interface YakuMeta {
 }
 
 const YAKU_META: Record<string, YakuMeta> = {
-  [YakuId.Riichi]:        { name: 'リーチ', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Ippatsu]:       { name: '一発', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Tenhou]:        { name: '天和', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Chiihou]:       { name: '地和', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.MenzenTsumo]:   { name: '門前清自摸和', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Tanyao]:        { name: '断么九', hanClosed: 1, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.Pinfu]:         { name: '平和', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Iipeiko]:       { name: '一盃口', hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Yakuhai]:       { name: '役牌', hanClosed: 1, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.Haitei]:        { name: '海底摸月', hanClosed: 1, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.Houtei]:        { name: '河底撈月', hanClosed: 1, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.Rinshan]:       { name: '嶺上開花', hanClosed: 1, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.Chankan]:       { name: '槍槓', hanClosed: 1, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.DoubleRiichi]:  { name: 'ダブルリーチ', hanClosed: 2, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Chiitoitsu]:    { name: '七対子', hanClosed: 2, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Chanta]:        { name: '混全帯么九', hanClosed: 2, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.Ittsuu]:        { name: '一気通貫', hanClosed: 2, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.SanshokuDoujun]:{ name: '三色同順', hanClosed: 2, hanOpen: 1, yakuman: false, doubleYakuman: false },
-  [YakuId.Toitoi]:        { name: '対々和', hanClosed: 2, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.Sanankou]:      { name: '三暗刻', hanClosed: 2, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.SanshokuDoukou]:{ name: '三色同刻', hanClosed: 2, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.Sankantsu]:     { name: '三槓子', hanClosed: 2, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.Shousangen]:    { name: '小三元', hanClosed: 2, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.Honroutou]:     { name: '混老頭', hanClosed: 2, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.Ryanpeiko]:     { name: '二盃口', hanClosed: 3, hanOpen: 0, yakuman: false, doubleYakuman: false },
-  [YakuId.Junchan]:       { name: '純全帯么九', hanClosed: 3, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.Honitsu]:       { name: '混一色', hanClosed: 3, hanOpen: 2, yakuman: false, doubleYakuman: false },
-  [YakuId.Chinitsu]:      { name: '清一色', hanClosed: 6, hanOpen: 5, yakuman: false, doubleYakuman: false },
-  [YakuId.Suuankou]:         { name: '四暗刻', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Kokushi]:          { name: '国士無双', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.DaiSanGen]:        { name: '大三元', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Suushii]:          { name: '四喜和', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.TsuuIisou]:        { name: '字一色', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Ryuuiisou]:        { name: '緑一色', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Chuuren]:          { name: '九蓮宝燈', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Chinroutou]:       { name: '清老頭', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Suukantsu]:        { name: '四槓子', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
-  [YakuId.Kokushi13]:        { name: '国士無双十三面待ち', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: true },
-  [YakuId.SuuankouTanki]:    { name: '四暗刻単騎待ち', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: true },
-  [YakuId.DaiSuushii]:       { name: '大四喜', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: true },
-  [YakuId.Chuuren9]:         { name: '純正九蓮宝燈', hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: true },
+  [YakuId.Riichi]: {
+    name: "リーチ",
+    hanClosed: 1,
+    hanOpen: 0,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Ippatsu]: {
+    name: "一発",
+    hanClosed: 1,
+    hanOpen: 0,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Tenhou]: { name: "天和", hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
+  [YakuId.Chiihou]: { name: "地和", hanClosed: 0, hanOpen: 0, yakuman: true, doubleYakuman: false },
+  [YakuId.MenzenTsumo]: {
+    name: "門前清自摸和",
+    hanClosed: 1,
+    hanOpen: 0,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Tanyao]: {
+    name: "断么九",
+    hanClosed: 1,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Pinfu]: { name: "平和", hanClosed: 1, hanOpen: 0, yakuman: false, doubleYakuman: false },
+  [YakuId.Iipeiko]: {
+    name: "一盃口",
+    hanClosed: 1,
+    hanOpen: 0,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Yakuhai]: {
+    name: "役牌",
+    hanClosed: 1,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Haitei]: {
+    name: "海底摸月",
+    hanClosed: 1,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Houtei]: {
+    name: "河底撈月",
+    hanClosed: 1,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Rinshan]: {
+    name: "嶺上開花",
+    hanClosed: 1,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Chankan]: {
+    name: "槍槓",
+    hanClosed: 1,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.DoubleRiichi]: {
+    name: "ダブルリーチ",
+    hanClosed: 2,
+    hanOpen: 0,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Chiitoitsu]: {
+    name: "七対子",
+    hanClosed: 2,
+    hanOpen: 0,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Chanta]: {
+    name: "混全帯么九",
+    hanClosed: 2,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Ittsuu]: {
+    name: "一気通貫",
+    hanClosed: 2,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.SanshokuDoujun]: {
+    name: "三色同順",
+    hanClosed: 2,
+    hanOpen: 1,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Toitoi]: {
+    name: "対々和",
+    hanClosed: 2,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Sanankou]: {
+    name: "三暗刻",
+    hanClosed: 2,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.SanshokuDoukou]: {
+    name: "三色同刻",
+    hanClosed: 2,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Sankantsu]: {
+    name: "三槓子",
+    hanClosed: 2,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Shousangen]: {
+    name: "小三元",
+    hanClosed: 2,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Honroutou]: {
+    name: "混老頭",
+    hanClosed: 2,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Ryanpeiko]: {
+    name: "二盃口",
+    hanClosed: 3,
+    hanOpen: 0,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Junchan]: {
+    name: "純全帯么九",
+    hanClosed: 3,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Honitsu]: {
+    name: "混一色",
+    hanClosed: 3,
+    hanOpen: 2,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Chinitsu]: {
+    name: "清一色",
+    hanClosed: 6,
+    hanOpen: 5,
+    yakuman: false,
+    doubleYakuman: false,
+  },
+  [YakuId.Suuankou]: {
+    name: "四暗刻",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.Kokushi]: {
+    name: "国士無双",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.DaiSanGen]: {
+    name: "大三元",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.Suushii]: {
+    name: "四喜和",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.TsuuIisou]: {
+    name: "字一色",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.Ryuuiisou]: {
+    name: "緑一色",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.Chuuren]: {
+    name: "九蓮宝燈",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.Chinroutou]: {
+    name: "清老頭",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.Suukantsu]: {
+    name: "四槓子",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: false,
+  },
+  [YakuId.Kokushi13]: {
+    name: "国士無双十三面待ち",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: true,
+  },
+  [YakuId.SuuankouTanki]: {
+    name: "四暗刻単騎待ち",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: true,
+  },
+  [YakuId.DaiSuushii]: {
+    name: "大四喜",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: true,
+  },
+  [YakuId.Chuuren9]: {
+    name: "純正九蓮宝燈",
+    hanClosed: 0,
+    hanOpen: 0,
+    yakuman: true,
+    doubleYakuman: true,
+  },
 };
 
 export interface YakuResult {
@@ -111,7 +339,7 @@ export interface YakuResult {
 
 // ── Group types for hand decomposition ────────────────────────────
 
-export type GroupType = 'pair' | 'triplet' | 'sequence' | 'quad';
+export type GroupType = "pair" | "triplet" | "sequence" | "quad";
 
 export interface Group {
   type: GroupType;
@@ -170,11 +398,9 @@ function isKokushiHand(counts: number[]): boolean {
   return true;
 }
 
-function isKokushi13Wait(counts: number[]): boolean {
-  for (const idx of KOKUSHI_INDICES) {
-    if (counts[idx] === 2) return true;
-  }
-  return false;
+function isKokushi13Wait(counts: number[], winTile: Tile): boolean {
+  const winIdx = tileToIndex(winTile);
+  return counts[winIdx] === 2;
 }
 
 // ── 7 pairs check ─────────────────────────────────────────────────
@@ -191,16 +417,20 @@ function isChiitoitsuHand(counts: number[]): boolean {
 // ── Decomposition: find groups in a winning hand ──────────────────
 
 function decomposeByRemovingGroups(
-  counts: number[], remainingGroups: number,
+  counts: number[],
+  remainingGroups: number,
   collected: Group[],
 ): Group[] | null {
   if (remainingGroups === 0) {
-    return counts.every(c => c === 0) ? [...collected] : null;
+    return counts.every((c) => c === 0) ? [...collected] : null;
   }
 
   let first = -1;
   for (let i = 0; i < 34; i++) {
-    if (counts[i]! > 0) { first = i; break; }
+    if (counts[i]! > 0) {
+      first = i;
+      break;
+    }
   }
   if (first === -1) return null;
 
@@ -208,13 +438,16 @@ function decomposeByRemovingGroups(
   if (counts[first]! >= 3) {
     counts[first] -= 3;
     const g: Group = {
-      type: 'triplet',
+      type: "triplet",
       tiles: [indexToTile(first, false), indexToTile(first, false), indexToTile(first, false)],
       isOpen: false,
       lowestIndex: first,
     };
     const result = decomposeByRemovingGroups(counts, remainingGroups - 1, [...collected, g]);
-    if (result) { counts[first] += 3; return result; }
+    if (result) {
+      counts[first] += 3;
+      return result;
+    }
     counts[first] += 3;
   }
 
@@ -225,13 +458,18 @@ function decomposeByRemovingGroups(
       counts[first + 1]--;
       counts[first + 2]--;
       const g: Group = {
-        type: 'sequence',
+        type: "sequence",
         tiles: [indexToTile(first), indexToTile(first + 1), indexToTile(first + 2)],
         isOpen: false,
         lowestIndex: first,
       };
       const result = decomposeByRemovingGroups(counts, remainingGroups - 1, [...collected, g]);
-      if (result) { counts[first]++; counts[first + 1]++; counts[first + 2]++; return result; }
+      if (result) {
+        counts[first]++;
+        counts[first + 1]++;
+        counts[first + 2]++;
+        return result;
+      }
       counts[first]++;
       counts[first + 1]++;
       counts[first + 2]++;
@@ -241,12 +479,21 @@ function decomposeByRemovingGroups(
   return null;
 }
 
-export function decomposeStandardHand(tiles: readonly Tile[], melds: readonly Meld[]): Group[] | null {
+export function decomposeStandardHand(
+  tiles: readonly Tile[],
+  melds: readonly Meld[],
+  winTile: Tile,
+  isTsumo: boolean,
+): Group[] | null {
   const counts = tilesToCounts(tiles);
-  const meldGroups: Group[] = melds.map(m => ({
-    type: m.type === MeldType.Chi ? 'sequence' as const :
-          m.type === MeldType.Kan || m.type === MeldType.ClosedKan || m.type === MeldType.AddedKan ? 'quad' as const :
-          'triplet' as const,
+  const winIdx = tileToIndex(winTile);
+  const meldGroups: Group[] = melds.map((m) => ({
+    type:
+      m.type === MeldType.Chi
+        ? ("sequence" as const)
+        : m.type === MeldType.Kan || m.type === MeldType.ClosedKan || m.type === MeldType.AddedKan
+          ? ("quad" as const)
+          : ("triplet" as const),
     tiles: m.tiles,
     isOpen: m.type !== MeldType.ClosedKan,
     lowestIndex: tileToIndex(m.tiles[0]!),
@@ -256,14 +503,32 @@ export function decomposeStandardHand(tiles: readonly Tile[], melds: readonly Me
     if (counts[i]! >= 2) {
       counts[i] -= 2;
       const pairGroup: Group = {
-        type: 'pair',
+        type: "pair",
         tiles: [indexToTile(i), indexToTile(i)],
         isOpen: false,
         lowestIndex: i,
       };
-      const groups = decomposeByRemovingGroups(counts, 4 - melds.length, [pairGroup, ...meldGroups]);
+      const groups = decomposeByRemovingGroups(
+        counts,
+        4 - melds.length,
+        [pairGroup, ...meldGroups],
+      );
       counts[i] += 2;
-      if (groups) return groups;
+      if (groups) {
+        if (isTsumo) return groups;
+
+        const closedGroups = [groups[0]!, ...groups.slice(1 + melds.length)];
+        const winCandidates = closedGroups.filter((group) =>
+          group.tiles.some((tile) => tileToIndex(tile) === winIdx),
+        );
+        if (winCandidates.some((group) => group.type !== "triplet")) return groups;
+
+        const completedTriplet = winCandidates.find((group) => group.type === "triplet");
+        if (!completedTriplet) return groups;
+        return groups.map((group) =>
+          group === completedTriplet ? { ...group, isOpen: true } : group,
+        );
+      }
     }
   }
   return null;
@@ -293,13 +558,14 @@ export interface DetectYakuParams {
  * Main yaku detection entry point.
  * Returns all yaku applicable to the hand + groups for fu calculation.
  */
-export function detectYaku(
-  params: DetectYakuParams,
-): { yaku: YakuResult[]; groups: HandGroups | null } {
+export function detectYaku(params: DetectYakuParams): {
+  yaku: YakuResult[];
+  groups: HandGroups | null;
+} {
   const { closedTiles, melds, winTile, isTsumo, roundWind, playerWind, isRiichi } = params;
-  const allTiles = [...closedTiles, winTile, ...melds.flatMap(m => m.tiles)];
+  const allTiles = [...closedTiles, winTile, ...melds.flatMap((m) => m.tiles)];
   const counts = tilesToCounts(allTiles);
-  const isClosed = melds.every(m => m.type === MeldType.ClosedKan);
+  const isClosed = melds.every((m) => m.type === MeldType.ClosedKan);
   const resultingYaku: YakuResult[] = [];
   const handGroups: HandGroups = { groups: [], isClosed, winTile, isTsumo };
 
@@ -329,19 +595,18 @@ export function detectYaku(
     resultingYaku.push(metaResult(YakuId.MenzenTsumo));
   }
 
-
   // ── Special patterns ──
 
   // Kokushi (13 orphans)
   if (isClosed && isKokushiHand(counts)) {
-    const is13Wait = isKokushi13Wait(counts);
+    const is13Wait = isKokushi13Wait(counts, winTile);
     resultingYaku.push(metaResult(is13Wait ? YakuId.Kokushi13 : YakuId.Kokushi));
     const pairs: Group[] = [];
     for (const idx of KOKUSHI_INDICES) {
       const tile = indexToTile(idx);
       const cnt = counts[idx]!;
       for (let k = 0; k < cnt; k++) {
-        pairs.push({ type: 'pair' as const, tiles: [tile, tile], isOpen: false, lowestIndex: idx });
+        pairs.push({ type: "pair" as const, tiles: [tile, tile], isOpen: false, lowestIndex: idx });
       }
     }
     handGroups.groups = pairs;
@@ -355,7 +620,7 @@ export function detectYaku(
     for (let i = 0; i < 34; i++) {
       if (counts[i]! >= 2) {
         const tile = indexToTile(i);
-        pairs.push({ type: 'pair', tiles: [tile, tile], isOpen: false, lowestIndex: i });
+        pairs.push({ type: "pair", tiles: [tile, tile], isOpen: false, lowestIndex: i });
       }
     }
     handGroups.groups = pairs;
@@ -363,27 +628,25 @@ export function detectYaku(
   }
 
   // Standard decomposition
-  const standardGroups = decomposeStandardHand([...closedTiles, winTile], melds);
+  const standardGroups = decomposeStandardHand([...closedTiles, winTile], melds, winTile, isTsumo);
   if (!standardGroups) return { yaku: [], groups: null };
   handGroups.groups = standardGroups;
 
   // ── Now detect yaku from groups ──
 
-  const pairs = standardGroups.filter(g => g.type === 'pair');
-  const triplets = standardGroups.filter(g => g.type === 'triplet');
-  const sequences = standardGroups.filter(g => g.type === 'sequence');
-  const quads = standardGroups.filter(g => g.type === 'quad');
+  const pairs = standardGroups.filter((g) => g.type === "pair");
+  const triplets = standardGroups.filter((g) => g.type === "triplet");
+  const sequences = standardGroups.filter((g) => g.type === "sequence");
+  const quads = standardGroups.filter((g) => g.type === "quad");
   const allMelds = [...triplets, ...sequences, ...quads];
-  const allNonPairTiles = allMelds.flatMap(g => g.tiles);
-  const allHandTiles = [...allNonPairTiles, ...pairs.flatMap(g => g.tiles)];
+  const allNonPairTiles = allMelds.flatMap((g) => g.tiles);
+  const allHandTiles = [...allNonPairTiles, ...pairs.flatMap((g) => g.tiles)];
 
-
-
-  // Pinfu: 4 sequences + non-value pair + two-sided wait
-  if (allMelds.length === 4 && sequences.length === 4 && pairs.length === 1) {
+  // Pinfu: 4 sequences + non-value pair + two-sided wait (closed only)
+  if (isClosed && allMelds.length === 4 && sequences.length === 4 && pairs.length === 1) {
     const pairIdx = pairs[0]!.lowestIndex;
     const isValuePair =
-      (pairIdx >= 31) ||
+      pairIdx >= 31 ||
       (pairIdx >= 27 && (pairIdx - 27 === roundWind || pairIdx - 27 === playerWind));
     if (!isValuePair && isTwoSidedWait(sequences, winTile)) {
       resultingYaku.push(metaResult(YakuId.Pinfu));
@@ -405,13 +668,13 @@ export function detectYaku(
   }
 
   // Tanyao (all non-terminal/honor)
-  if (allHandTiles.every(t => !isTerminalOrHonor(t))) {
+  if (allHandTiles.every((t) => !isTerminalOrHonor(t))) {
     resultingYaku.push(metaResult(YakuId.Tanyao));
   }
 
   // Honroutou / Chinroutou
-  if (allHandTiles.every(t => isTerminalOrHonor(t))) {
-    const hasHonor = allHandTiles.some(t => t.suit === Suit.Wind || t.suit === Suit.Dragon);
+  if (allHandTiles.every((t) => isTerminalOrHonor(t))) {
+    const hasHonor = allHandTiles.some((t) => t.suit === Suit.Wind || t.suit === Suit.Dragon);
     if (!hasHonor) {
       resultingYaku.push(metaResult(YakuId.Chinroutou));
     } else if (allMelds.length === triplets.length + quads.length) {
@@ -420,12 +683,16 @@ export function detectYaku(
   }
 
   // Toitoi (all triplets)
-  if (allMelds.length > 0 && triplets.length + quads.length === allMelds.length && allMelds.length === 4) {
+  if (
+    allMelds.length > 0 &&
+    triplets.length + quads.length === allMelds.length &&
+    allMelds.length === 4
+  ) {
     resultingYaku.push(metaResult(YakuId.Toitoi));
   }
 
   // Sanankou (3+ concealed triplets/quads)
-  const concealedGroups = [...triplets, ...quads].filter(g => !g.isOpen);
+  const concealedGroups = [...triplets, ...quads].filter((g) => !g.isOpen);
   if (concealedGroups.length >= 3) {
     resultingYaku.push(metaResult(YakuId.Sanankou));
   }
@@ -433,7 +700,7 @@ export function detectYaku(
   // Suuankou (4 concealed triplets/quads, closed)
   if (isClosed && concealedGroups.length === 4) {
     const winIdx = tileToIndex(winTile);
-    const isTankiWait = pairs.some(g => tileToIndex(g.tiles[0]!) === winIdx);
+    const isTankiWait = pairs.some((g) => tileToIndex(g.tiles[0]!) === winIdx);
     resultingYaku.push(metaResult(isTankiWait ? YakuId.SuuankouTanki : YakuId.Suuankou));
   }
 
@@ -453,11 +720,11 @@ export function detectYaku(
   }
 
   // Chanta / Junchan
-  const allMeldsHaveTerminalOrHonor = allMelds.every(g =>
-    g.tiles.some(t => isTerminalOrHonor(t)),
+  const allMeldsHaveTerminalOrHonor = allMelds.every((g) =>
+    g.tiles.some((t) => isTerminalOrHonor(t)),
   );
   if (allMeldsHaveTerminalOrHonor) {
-    const hasHonor = allHandTiles.some(t => t.suit === Suit.Wind || t.suit === Suit.Dragon);
+    const hasHonor = allHandTiles.some((t) => t.suit === Suit.Wind || t.suit === Suit.Dragon);
     if (hasHonor) {
       resultingYaku.push(metaResult(YakuId.Chanta));
     } else {
@@ -467,10 +734,10 @@ export function detectYaku(
 
   // Ittsuu (full straight in one suit)
   for (const s of [Suit.Man, Suit.Pin, Suit.Sou]) {
-    const seqsInSuit = sequences.filter(g => g.tiles[0]!.suit === s);
-    const has123 = seqsInSuit.some(g => g.lowestIndex % 9 === 0);
-    const has456 = seqsInSuit.some(g => g.lowestIndex % 9 === 3);
-    const has789 = seqsInSuit.some(g => g.lowestIndex % 9 === 6);
+    const seqsInSuit = sequences.filter((g) => g.tiles[0]!.suit === s);
+    const has123 = seqsInSuit.some((g) => g.lowestIndex % 9 === 0);
+    const has456 = seqsInSuit.some((g) => g.lowestIndex % 9 === 3);
+    const has789 = seqsInSuit.some((g) => g.lowestIndex % 9 === 6);
     if (has123 && has456 && has789) {
       resultingYaku.push(metaResult(YakuId.Ittsuu));
       break;
@@ -479,9 +746,9 @@ export function detectYaku(
 
   // Sanshoku Doujun (same sequence in 3 suits)
   for (let v = 0; v < 7; v++) {
-    const hasMan = sequences.some(g => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Man);
-    const hasPin = sequences.some(g => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Pin);
-    const hasSou = sequences.some(g => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Sou);
+    const hasMan = sequences.some((g) => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Man);
+    const hasPin = sequences.some((g) => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Pin);
+    const hasSou = sequences.some((g) => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Sou);
     if (hasMan && hasPin && hasSou) {
       resultingYaku.push(metaResult(YakuId.SanshokuDoujun));
       break;
@@ -490,9 +757,9 @@ export function detectYaku(
 
   // Sanshoku Doukou (same triplet value in 3 suits)
   for (let v = 0; v < 9; v++) {
-    const hasMan = triplets.some(g => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Man);
-    const hasPin = triplets.some(g => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Pin);
-    const hasSou = triplets.some(g => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Sou);
+    const hasMan = triplets.some((g) => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Man);
+    const hasPin = triplets.some((g) => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Pin);
+    const hasSou = triplets.some((g) => g.lowestIndex % 9 === v && g.tiles[0]!.suit === Suit.Sou);
     if (hasMan && hasPin && hasSou) {
       resultingYaku.push(metaResult(YakuId.SanshokuDoukou));
       break;
@@ -500,7 +767,7 @@ export function detectYaku(
   }
 
   // Honitsu / Chinitsu / Tsuu Iisou
-  const suits = new Set(allHandTiles.map(t => t.suit));
+  const suits = new Set(allHandTiles.map((t) => t.suit));
   if (suits.size === 1) {
     const suit = [...suits][0]!;
     if (suit !== Suit.Wind && suit !== Suit.Dragon) {
@@ -517,53 +784,65 @@ export function detectYaku(
   }
 
   // Shousangen (2 dragon triplets + dragon pair)
-  const dragonTripletCount = [...triplets, ...quads].filter(g => g.lowestIndex >= 31).length;
-  const dragonPair = pairs.some(g => g.lowestIndex >= 31);
+  const dragonTripletCount = [...triplets, ...quads].filter((g) => g.lowestIndex >= 31).length;
+  const dragonPair = pairs.some((g) => g.lowestIndex >= 31);
   if (dragonTripletCount >= 2 && dragonPair) {
     resultingYaku.push(metaResult(YakuId.Shousangen));
   }
 
   // Suushii / DaiSuushii
-  const windTriplets = [...triplets, ...quads].filter(g => g.lowestIndex >= 27 && g.lowestIndex <= 30);
-  if (windTriplets.length === 4) {
-    const allFourWinds = [0, 1, 2, 3].every(w =>
-      windTriplets.some(g => g.lowestIndex === 27 + w),
+  const windGroups = [...triplets, ...quads].filter(
+    (g) => g.lowestIndex >= 27 && g.lowestIndex <= 30,
+  );
+  const windPairs = pairs.filter((g) => g.lowestIndex >= 27 && g.lowestIndex <= 30);
+  if (windGroups.length === 4) {
+    // All four winds as triplets/quads = DaiSuushii (double yakuman)
+    const allFourWinds = [0, 1, 2, 3].every((w) =>
+      windGroups.some((g) => g.lowestIndex === 27 + w),
     );
-    resultingYaku.push(metaResult(allFourWinds ? YakuId.DaiSuushii : YakuId.Suushii));
+    if (allFourWinds) {
+      resultingYaku.push(metaResult(YakuId.DaiSuushii));
+    } else {
+      resultingYaku.push(metaResult(YakuId.Suushii));
+    }
+  } else if (windGroups.length === 3 && windPairs.length === 1) {
+    // 3 wind triplets/quads + 1 wind pair = Shousuushii / Suushii (yakuman)
+    resultingYaku.push(metaResult(YakuId.Suushii));
   }
 
   // DaiSanGen
-  const dragonTriplets2 = [...triplets, ...quads].filter(g => g.lowestIndex >= 31);
+  const dragonTriplets2 = [...triplets, ...quads].filter((g) => g.lowestIndex >= 31);
   if (dragonTriplets2.length === 3) {
-    const allThreeDragons = [0, 1, 2].every(d =>
-      dragonTriplets2.some(g => g.lowestIndex === 31 + d),
+    const allThreeDragons = [0, 1, 2].every((d) =>
+      dragonTriplets2.some((g) => g.lowestIndex === 31 + d),
     );
     if (allThreeDragons) resultingYaku.push(metaResult(YakuId.DaiSanGen));
   }
 
   // Ryuuiisou (all green)
   const greenIndices = new Set([18 + 1, 18 + 2, 18 + 3, 18 + 5, 18 + 7, 31 + 1]);
-  if (allHandTiles.every(t => greenIndices.has(tileToIndex(t)))) {
+  if (allHandTiles.every((t) => greenIndices.has(tileToIndex(t)))) {
     resultingYaku.push(metaResult(YakuId.Ryuuiisou));
   }
 
   // Chuuren Poutou
   if (isClosed) {
+    const CHUUREN_PATTERN = [3, 1, 1, 1, 1, 1, 1, 1, 3];
     for (const s of [Suit.Man, Suit.Pin, Suit.Sou]) {
       const base = s === Suit.Man ? 0 : s === Suit.Pin ? 9 : 18;
       const suitCounts = counts.slice(base, base + 9);
-      if (suitCounts[0]! >= 3 && suitCounts[8]! >= 3) {
-        let allPresent = true;
-        for (let i = 1; i <= 7; i++) {
-          if (suitCounts[i]! < 1) { allPresent = false; break; }
-        }
-        if (allPresent) {
-          const total = suitCounts.reduce((a, b) => a + b, 0);
-          if (total === 14) {
-            const is9Wait = suitCounts[0] === 4 || suitCounts[8] === 4;
-            resultingYaku.push(metaResult(is9Wait ? YakuId.Chuuren9 : YakuId.Chuuren));
-          }
-        }
+      if (
+        suitCounts[0]! >= 3 &&
+        suitCounts[8]! >= 3 &&
+        suitCounts.slice(1, 8).every((c) => c! >= 1)
+      ) {
+        const winOffset = tileToIndex(winTile) - base;
+        const reduced =
+          winOffset >= 0 && winOffset <= 8
+            ? suitCounts.map((c, i) => (i === winOffset ? c! - 1 : c!))
+            : [...suitCounts];
+        const is9Wait = reduced.every((c, i) => c === CHUUREN_PATTERN[i]);
+        resultingYaku.push(metaResult(is9Wait ? YakuId.Chuuren9 : YakuId.Chuuren));
       }
     }
   }
@@ -585,10 +864,13 @@ export function detectYaku(
 // ── Helpers ───────────────────────────────────────────────────────
 
 function indexToTile(index: number, red = false): Tile {
-  if (index < 9)  return { suit: Suit.Man,   value: (index + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
-  if (index < 18) return { suit: Suit.Pin,   value: (index - 9 + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
-  if (index < 27) return { suit: Suit.Sou,   value: (index - 18 + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
-  if (index < 31) return { suit: Suit.Wind,  value: (index - 27) as Wind, red: false };
+  if (index < 9)
+    return { suit: Suit.Man, value: (index + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
+  if (index < 18)
+    return { suit: Suit.Pin, value: (index - 9 + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
+  if (index < 27)
+    return { suit: Suit.Sou, value: (index - 18 + 1) as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red };
+  if (index < 31) return { suit: Suit.Wind, value: (index - 27) as Wind, red: false };
   return { suit: Suit.Dragon, value: (index - 31) as Dragon, red: false };
 }
 
