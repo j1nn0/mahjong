@@ -1,1 +1,0 @@
-完了前に対象テスト、rtk pnpm test、rtk pnpm exec tsc --noEmitをリスクに応じて実行し、実出力を確認する。lint scriptは未設定。ルール・保存形式・AI判断変更は明示する。可視TUI変更は必要に応じスクリーンショット/録画。コミットはConventional Commits（例: fix(state): preserve riichi after restore）。一時ファイルはrepo直下.tempを使い完了時に削除。

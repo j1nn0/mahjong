@@ -14,13 +14,12 @@ Use the cheapest tool that can answer the question.
 Use Context Mode to discover relevant project context before broad investigation.
 
 Code investigation:
-Serena or ast-grep → CodeGraph only when broader impact analysis is needed
+ast-grep → CodeGraph only when broader impact analysis is needed
 
-- Prefer Serena for symbol lookup, definitions, references, and call hierarchy.
-- Prefer ast-grep for syntax-aware pattern search and mechanical refactors.
+* Prefer ast-grep for syntax-aware pattern search and mechanical refactors.
 
 Refactoring and impact analysis:
-CodeGraph → Serena → ast-grep
+CodeGraph → ast-grep
 
 Use plain-text search only for config keys, env names, logs, route output, documentation, and non-code text.
 

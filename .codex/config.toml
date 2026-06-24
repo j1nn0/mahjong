@@ -12,11 +12,3 @@ approval_mode = "approve"
 
 [mcp_servers.codegraph.tools.codegraph_node]
 approval_mode = "approve"
-
-[mcp_servers.serena]
-command = "serena"
-args = ["start-mcp-server", "--project-from-cwd", "--context", "ide"]
-startup_timeout_sec = 60
-
-[mcp_servers.serena.tools.write_memory]
-approval_mode = "approve"
