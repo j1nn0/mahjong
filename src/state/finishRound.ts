@@ -397,6 +397,7 @@ export function finishRound(
   score: ScoreResult | null,
   message: string,
   responsibilityMessage?: string,
+  isAbortiveDraw?: boolean,
 ): GameState {
   const startingDealer = state.startingDealer ?? 0;
   const tempRanking = rankPlayers(players, startingDealer);
@@ -409,21 +410,23 @@ export function finishRound(
   let matchEnded = false;
   if (isTobi) {
     matchEnded = true;
-  } else if (state.roundWind === Wind.Ton) {
-    if (state.roundNumber >= 4) {
-      if (topPoints >= 30000) {
-        if (!dealerContinues) {
-          matchEnded = true;
-        } else if (topPlayer === state.dealer) {
-          matchEnded = true; // 親のあがりやめ・テンパイやめ
+  } else if (!isAbortiveDraw) {
+    if (state.roundWind === Wind.Ton) {
+      if (state.roundNumber >= 4) {
+        if (topPoints >= 30000) {
+          if (!dealerContinues) {
+            matchEnded = true;
+          } else if (topPlayer === state.dealer) {
+            matchEnded = true; // 親のあがりやめ・テンパイやめ
+          }
         }
       }
-    }
-  } else if (state.roundWind === Wind.Nan) {
-    if (topPoints >= 30000) {
-      matchEnded = true;
-    } else if (state.roundNumber >= 4) {
-      matchEnded = true; // 南4局終了で強制打ち切り
+    } else if (state.roundWind === Wind.Nan) {
+      if (topPoints >= 30000) {
+        matchEnded = true;
+      } else if (state.roundNumber >= 4 && !dealerContinues) {
+        matchEnded = true; // 南4局終了で強制打ち切り（親が流れた場合）
+      }
     }
   }
 
@@ -505,7 +508,7 @@ export function finishRound(
 }
 
 export function finishAbortiveDraw(state: GameState, reason: AbortiveDrawReason): GameState {
-  return finishRound(state, state.players, null, true, false, null, abortiveDrawMessage(reason));
+  return finishRound(state, state.players, null, true, true, null, abortiveDrawMessage(reason), undefined, true);
 }
 
 // ── Complete hand check ─────────────────────────────────────────────

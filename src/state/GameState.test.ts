@@ -10,6 +10,7 @@ import {
   applyRonPayment,
   applyDoubleRonPayments,
   rankPlayers,
+  finishAbortiveDraw,
 } from "./GameState.js";
 import type { GameState, PlayerData } from "./GameState.js";
 import { MeldType, Suit, type Tile, type Meld, type Discard, PlayerWind } from "../game/types.js";
@@ -288,7 +289,7 @@ describe("abortive draws", () => {
 
     expect(after.phase).toBe("roundEnded");
     expect(after.honba).toBe(state.honba + 1);
-    expect(after.dealer).toBe(1);
+    expect(after.dealer).toBe(0);
     expect(after.message).toBe("途中流局: 九種九牌");
   });
 
@@ -821,7 +822,7 @@ describe("abortive draws", () => {
 
     expect(after.phase).toBe("roundEnded");
     expect(after.honba).toBe(state.honba + 1);
-    expect(after.dealer).toBe(1);
+    expect(after.dealer).toBe(0);
     expect(after.message).toBe("途中流局: 四風連打");
   });
 
@@ -1193,7 +1194,7 @@ describe("gameReducer claims", () => {
 
     expect(afterRon.phase).toBe("roundEnded");
     expect(afterRon.honba).toBe(state.honba + 1);
-    expect(afterRon.dealer).toBe(1);
+    expect(afterRon.dealer).toBe(0);
     expect(afterRon.riichiSticks).toBe(2);
     expect(afterRon.players.map((player) => player.points)).toEqual(beforePoints);
     expect(afterRon.message).toBe("途中流局: 三家和");
@@ -2952,9 +2953,9 @@ describe("Nan'yu and Sudden Death rules", () => {
       roundWind: 0,
       roundNumber: 4,
       players: makePlayers(
-        { ...makeTestPlayer(winningTanyao13()), points: 26000 },
-        { ...makeTestPlayer([]), points: 27000 },
-        { ...makeTestPlayer([]), points: 27000 },
+        { ...makeTestPlayer(winningTanyao13()), points: 16000 },
+        { ...makeTestPlayer([]), points: 17000 },
+        { ...makeTestPlayer([]), points: 17000 },
         { ...makeTestPlayer([]), points: 15000 },
       ),
       lastDiscard: { tile: p(5), player: 2 },
@@ -2974,7 +2975,7 @@ describe("Nan'yu and Sudden Death rules", () => {
       roundWind: 1,
       roundNumber: 1,
       players: makePlayers(
-        { ...makeTestPlayer(winningTanyao13()), points: 25000 },
+        { ...makeTestPlayer(winningTanyao13()), points: 29000 },
         { ...makeTestPlayer([]), points: 25000 },
         { ...makeTestPlayer([]), points: 25000 },
         { ...makeTestPlayer([]), points: 25000 },
@@ -3004,6 +3005,72 @@ describe("Nan'yu and Sudden Death rules", () => {
 
     const afterRon = gameReducer(start, { type: "RON", winner: 0 });
     expect(afterRon.phase).toBe("ended");
+  });
+
+  it("does NOT end the game at the end of Nan 4 if top score is under 30000 and dealer continues", () => {
+    const start = startedState({
+      dealer: 3,
+      startingDealer: 0,
+      roundWind: 1,
+      roundNumber: 4,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 15000 },
+        { ...makeTestPlayer([]), points: 15000 },
+        { ...makeTestPlayer([]), points: 15000 },
+        { ...makeTestPlayer(winningTanyao13()), points: 15000 },
+      ),
+      lastDiscard: { tile: p(5), player: 2 },
+    });
+
+    const afterRon = gameReducer(start, { type: "RON", winner: 3 });
+    expect(afterRon.phase).toBe("roundEnded");
+    expect(afterRon.roundWind).toBe(1);
+    expect(afterRon.roundNumber).toBe(4);
+    expect(afterRon.honba).toBe(1);
+  });
+
+  it("aborts the round, continues dealer and increases honba on abortive draw", () => {
+    const start = startedState({
+      dealer: 0,
+      startingDealer: 0,
+      roundWind: 0,
+      roundNumber: 1,
+      honba: 0,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+    });
+
+    const afterDraw = finishAbortiveDraw(start, "kyuushuKyuuhai");
+    expect(afterDraw.phase).toBe("roundEnded");
+    expect(afterDraw.dealer).toBe(0);
+    expect(afterDraw.honba).toBe(1);
+    expect(afterDraw.roundWind).toBe(0);
+    expect(afterDraw.roundNumber).toBe(1);
+  });
+
+  it("does NOT trigger sudden death on abortive draw even if top score is over 30000 in Nan 1", () => {
+    const start = startedState({
+      dealer: 0,
+      startingDealer: 0,
+      roundWind: 1,
+      roundNumber: 1,
+      honba: 0,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 35000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 20000 },
+        { ...makeTestPlayer([]), points: 20000 },
+      ),
+    });
+
+    const afterDraw = finishAbortiveDraw(start, "suufonRenda");
+    expect(afterDraw.phase).toBe("roundEnded");
+    expect(afterDraw.dealer).toBe(0);
+    expect(afterDraw.honba).toBe(1);
   });
 
   it("resolves ties based on proximity to startingDealer", () => {
