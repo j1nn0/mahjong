@@ -279,8 +279,9 @@ function playerWind(player: number, dealer: number): Wind {
 }
 export { playerWind };
 
-function roundName(roundNumber: number): string {
-  return `東${roundNumber}局`;
+function roundName(roundNumber: number, roundWind = Wind.Ton): string {
+  const windStr = ["東", "南", "西", "北"][roundWind] ?? "東";
+  return `${windStr}${roundNumber}局`;
 }
 export { roundName };
 
@@ -353,9 +354,10 @@ export function dealRound(
     players,
     wall: wallRemaining,
     deadWall: { tiles: wallData.deadWall, doraCount: 1 },
-    roundWind: Wind.Ton,
+    roundWind: state.roundWind ?? Wind.Ton,
     roundNumber,
     dealer,
+    startingDealer: state.startingDealer ?? dealer,
     honba,
     riichiSticks,
     currentPlayer: dealer,
@@ -546,6 +548,7 @@ export function createInitialState(random?: (() => number) | null): GameState {
     roundWind: 0,
     roundNumber: 1,
     dealer,
+    startingDealer: dealer,
     honba: 0,
     riichiSticks: 0,
     currentPlayer: dealer,
@@ -638,6 +641,7 @@ export function normalizeGameState(value: unknown): GameState {
     roundWind: typeof value.roundWind === "number" ? value.roundWind : base.roundWind,
     roundNumber: typeof value.roundNumber === "number" ? value.roundNumber : base.roundNumber,
     dealer: typeof value.dealer === "number" ? value.dealer : base.dealer,
+    startingDealer: typeof value.startingDealer === "number" ? value.startingDealer : base.startingDealer,
     honba: typeof value.honba === "number" ? value.honba : base.honba,
     riichiSticks: typeof value.riichiSticks === "number" ? value.riichiSticks : base.riichiSticks,
     currentPlayer:

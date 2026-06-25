@@ -2,6 +2,11 @@
 
 # Repository Guidelines
 
+## Task Management
+
+- Use ordna before starting any work, and keep task status and progress updated there.
+- Follow `ORDNA.md` for ordna usage.
+
 ## Top priority rule
 
 - Always reply to users in Japanese.
@@ -9,21 +14,12 @@
 
 ## Code Intelligence
 
-Use the cheapest tool that can answer the question.
-
-Use Context Mode to discover relevant project context before broad investigation.
-
-Code investigation:
-ast-grep → CodeGraph only when broader impact analysis is needed
-
-* Prefer ast-grep for syntax-aware pattern search and mechanical refactors.
-
-Refactoring and impact analysis:
-CodeGraph → ast-grep
-
-Use plain-text search only for config keys, env names, logs, route output, documentation, and non-code text.
-
-Escalate only when additional context is required.
+- Use the cheapest tool that can answer the question.
+- Use Context Mode to discover relevant project context before broad investigation.
+- Use ast-grep for syntax-aware search and mechanical refactors.
+- Use CodeGraph only when broader impact analysis is needed.
+- Use plain-text search only for config keys, env names, logs, route output, documentation, and non-code text.
+- Escalate only when additional context is required.
 
 ## Project Structure & Module Organization
 

@@ -9,6 +9,7 @@ import {
   canDeclareKyuushuKyuuhai,
   applyRonPayment,
   applyDoubleRonPayments,
+  rankPlayers,
 } from "./GameState.js";
 import type { GameState, PlayerData } from "./GameState.js";
 import { MeldType, Suit, type Tile, type Meld, type Discard, PlayerWind } from "../game/types.js";
@@ -72,7 +73,7 @@ function startedState(overrides: Partial<GameState> = {}): GameState {
   return {
     ...gameReducer(
       createInitialState(() => 0),
-      { type: "START_GAME" },
+      { type: "START_GAME", dealer: 0 },
     ),
     ...overrides,
   };
@@ -1383,7 +1384,7 @@ describe("gameReducer claims", () => {
   });
 
   it("enters claiming phase after discard when pon is available", () => {
-    const start = gameReducer(createInitialState(), { type: "START_GAME" });
+    const start = gameReducer(createInitialState(), { type: "START_GAME", dealer: 0 });
     // We need to set up: P0 discards, P1 (or anyone else) can pon
     // Since we have random hands, let's test the PON action directly
     // by creating a state in claiming phase with claimOptions
@@ -1401,7 +1402,7 @@ describe("gameReducer claims", () => {
   it("processes PON action correctly", () => {
     // Create a scenario: P0 discards, P1 has pair → game should enter claiming phase
     // Let's construct a known state
-    const start = gameReducer(createInitialState(), { type: "START_GAME" });
+    const start = gameReducer(createInitialState(), { type: "START_GAME", dealer: 0 });
     const state0 = gameReducer(start, { type: "DRAW", player: 0 });
 
     // Just discard for now - the exact test depends on whether claims exist
@@ -1637,7 +1638,7 @@ describe("east-only match progression", () => {
   it("starts an east-only match at east 1 with the first dealer", () => {
     const state = gameReducer(
       createInitialState(() => 0),
-      { type: "START_GAME" },
+      { type: "START_GAME", dealer: 0 },
     );
     expect(state.roundNumber).toBe(1);
     expect(state.dealer).toBe(0);
@@ -1646,8 +1647,10 @@ describe("east-only match progression", () => {
   });
 
   it("produces expected non-zero dealer with fixed random", () => {
-    const random = () => 0.5; // Math.floor(0.5 * 4) = 2
-    const state = gameReducer(createInitialState(random), { type: "START_GAME" });
+    const state = gameReducer(
+      createInitialState(() => 0),
+      { type: "START_GAME", dealer: 2 },
+    );
     expect(state.dealer).toBe(2);
     expect(state.currentPlayer).toBe(2);
     // Dealer (player 2) should have wind Ton (0)
@@ -2939,4 +2942,108 @@ describe("responsibility payment (責任払い)", () => {
     expect(kanMeld.responsibility).toBeUndefined();
   });
 
+});
+
+describe("Nan'yu and Sudden Death rules", () => {
+  it("enters Nan'yu when top score is under 30000 at the end of East 4", () => {
+    const start = startedState({
+      dealer: 3,
+      startingDealer: 0,
+      roundWind: 0,
+      roundNumber: 4,
+      players: makePlayers(
+        { ...makeTestPlayer(winningTanyao13()), points: 26000 },
+        { ...makeTestPlayer([]), points: 27000 },
+        { ...makeTestPlayer([]), points: 27000 },
+        { ...makeTestPlayer([]), points: 15000 },
+      ),
+      lastDiscard: { tile: p(5), player: 2 },
+    });
+
+    const afterRon = gameReducer(start, { type: "RON", winner: 0 });
+    expect(afterRon.phase).toBe("roundEnded");
+    expect(afterRon.roundWind).toBe(1); // Wind.Nan
+    expect(afterRon.roundNumber).toBe(1);
+    expect(afterRon.dealer).toBe(0);
+  });
+
+  it("ends the game via sudden death when top score reaches 30000 in Nan 1", () => {
+    const start = startedState({
+      dealer: 0,
+      startingDealer: 0,
+      roundWind: 1,
+      roundNumber: 1,
+      players: makePlayers(
+        { ...makeTestPlayer(winningTanyao13()), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      lastDiscard: { tile: p(5), player: 2 },
+    });
+
+    const afterRon = gameReducer(start, { type: "RON", winner: 0 });
+    expect(afterRon.phase).toBe("ended");
+    expect(afterRon.finalRanking?.[0]).toBe(0);
+  });
+
+  it("forces game end at the end of Nan 4 even if top score is under 30000", () => {
+    const start = startedState({
+      dealer: 3,
+      startingDealer: 0,
+      roundWind: 1,
+      roundNumber: 4,
+      players: makePlayers(
+        { ...makeTestPlayer(winningTanyao13()), points: 15000 },
+        { ...makeTestPlayer([]), points: 28000 },
+        { ...makeTestPlayer([]), points: 28000 },
+        { ...makeTestPlayer([]), points: 25000 },
+      ),
+      lastDiscard: { tile: p(5), player: 3 },
+    });
+
+    const afterRon = gameReducer(start, { type: "RON", winner: 0 });
+    expect(afterRon.phase).toBe("ended");
+  });
+
+  it("resolves ties based on proximity to startingDealer", () => {
+    const players = makePlayers(
+      { ...makeTestPlayer([]), points: 20000 },
+      { ...makeTestPlayer([]), points: 25000 },
+      { ...makeTestPlayer([]), points: 20000 },
+      { ...makeTestPlayer([]), points: 25000 },
+    );
+
+    const rankingA = rankPlayers(players, 0);
+    expect(rankingA[0]).toBe(1);
+    expect(rankingA[1]).toBe(3);
+
+    const rankingB = rankPlayers(players, 2);
+    expect(rankingB[0]).toBe(3);
+    expect(rankingB[1]).toBe(1);
+  });
+
+  it("collects remaining riichi sticks for the top player at the end of the game on exhaustive draw", () => {
+    const start = startedState({
+      dealer: 3,
+      startingDealer: 0,
+      roundWind: 0,
+      roundNumber: 4,
+      players: makePlayers(
+        { ...makeTestPlayer([]), points: 15000 },
+        { ...makeTestPlayer([]), points: 32000 }, // Top player (P1)
+        { ...makeTestPlayer([]), points: 24000 },
+        { ...makeTestPlayer([]), points: 25000 }, // Dealer (no tenpai)
+      ),
+      wall: [], // Force draw
+      currentPlayer: 0,
+      lastDrawnTile: p(1),
+      riichiSticks: 1,
+    });
+
+    const afterDraw = gameReducer(start, { type: "DRAW", player: 0 });
+    expect(afterDraw.phase).toBe("ended");
+    expect(afterDraw.players[1].points).toBe(33000);
+    expect(afterDraw.riichiSticks).toBe(0);
+  });
 });

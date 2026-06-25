@@ -62,6 +62,7 @@ export interface GameState {
   roundWind: number;
   roundNumber: number;
   dealer: number;
+  startingDealer: number;
   honba: number;
   riichiSticks: number;
   currentPlayer: number;
@@ -94,6 +95,7 @@ export interface GameState {
 export type GameAction =
   | {
       type: "START_GAME";
+      dealer?: number;
     }
   | {
       type: "DRAW";

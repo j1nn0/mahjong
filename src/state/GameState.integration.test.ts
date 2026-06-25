@@ -14,7 +14,7 @@ function expectProgressionInvariants(state: GameState): void {
 // ── Full game runner ──────────────────────────────────────────────
 
 function runFullGame(dealerRoll: number, maxIterations = 2000): GameState {
-  let state = gameReducer(createInitialState(() => dealerRoll), { type: 'START_GAME' });
+  let state = gameReducer(createInitialState(() => dealerRoll), { type: 'START_GAME', dealer: 0 });
   let iterations = 0;
 
   // Track consecutive claiming-phase dispatches to break cycles.
@@ -79,7 +79,7 @@ describe('full-game integration', () => {
       expect(state.phase).toBe('ended');
       expect(isValidFinalRanking(state)).toBe(true);
       expectProgressionInvariants(state);
-      if (state.roundNumber < 4) {
+      if (state.roundWind === 0 && state.roundNumber < 4) {
         expect(state.players.some((p) => p.points < 0)).toBe(true);
       }
     }

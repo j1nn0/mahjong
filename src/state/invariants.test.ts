@@ -10,7 +10,7 @@ import {
 
 function startedState(overrides: Partial<GameState> = {}): GameState {
   return {
-    ...gameReducer(createInitialState(() => 0), { type: 'START_GAME' }),
+    ...gameReducer(createInitialState(() => 0), { type: 'START_GAME', dealer: 0 }),
     ...overrides,
   };
 }

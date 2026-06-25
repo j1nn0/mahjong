@@ -1,4 +1,4 @@
-import { type Tile, type Meld, Suit } from "../game/types.js";
+import { type Tile, type Meld, Suit, Wind } from "../game/types.js";
 import { getDoraIndicators, getUraDoraIndicators } from "../game/tiles.js";
 import { tilesToCounts, isWinningHand } from "../game/agari.js";
 import { decomposeStandardHand } from "../game/yaku.js";
@@ -129,10 +129,14 @@ export function isSuufonRenda(
 
 export function rankPlayers(
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
+  startingDealer: number,
 ): number[] {
   return [0, 1, 2, 3].sort((a, b) => {
     const pointDiff = players[b].points - players[a].points;
-    return pointDiff !== 0 ? pointDiff : a - b;
+    if (pointDiff !== 0) return pointDiff;
+    const distA = (a - startingDealer + 4) % 4;
+    const distB = (b - startingDealer + 4) % 4;
+    return distA - distB;
   });
 }
 
@@ -394,15 +398,71 @@ export function finishRound(
   message: string,
   responsibilityMessage?: string,
 ): GameState {
-  const nextDealer = dealerContinues ? state.dealer : (state.dealer + 1) % 4;
-  const nextRoundNumber = dealerContinues ? state.roundNumber : state.roundNumber + 1;
-  const nextHonba = dealerContinues || isDraw ? state.honba + 1 : 0;
-  const nextRiichiSticks = winner === null ? state.riichiSticks : 0;
-  const finalRanking = rankPlayers(players);
-  const finalDealerTop =
-    dealerContinues && state.roundNumber >= 4 && finalRanking[0] === state.dealer;
+  const startingDealer = state.startingDealer ?? 0;
+  const tempRanking = rankPlayers(players, startingDealer);
+  const topPlayer = tempRanking[0]!;
+  const topPoints = players[topPlayer].points;
+
   const isTobi = players.some((p) => p.points < 0);
-  const matchEnded = isTobi || (state.roundNumber >= 4 && (!dealerContinues || finalDealerTop));
+  const tobiSuffix = isTobi ? " (トビ終了)" : "";
+
+  let matchEnded = false;
+  if (isTobi) {
+    matchEnded = true;
+  } else if (state.roundWind === Wind.Ton) {
+    if (state.roundNumber >= 4) {
+      if (topPoints >= 30000) {
+        if (!dealerContinues) {
+          matchEnded = true;
+        } else if (topPlayer === state.dealer) {
+          matchEnded = true; // 親のあがりやめ・テンパイやめ
+        }
+      }
+    }
+  } else if (state.roundWind === Wind.Nan) {
+    if (topPoints >= 30000) {
+      matchEnded = true;
+    } else if (state.roundNumber >= 4) {
+      matchEnded = true; // 南4局終了で強制打ち切り
+    }
+  }
+
+  // 供託回収
+  let finalPlayers = [...players] as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+  let finalRiichiSticks = winner === null ? state.riichiSticks : 0;
+  if (matchEnded && finalRiichiSticks > 0) {
+    const topP = finalPlayers[topPlayer]!;
+    finalPlayers[topPlayer] = {
+      ...topP,
+      points: topP.points + finalRiichiSticks * 1000,
+    };
+    finalRiichiSticks = 0;
+  }
+
+  const finalRanking = rankPlayers(finalPlayers, startingDealer);
+
+  // 局進行の計算
+  let nextRoundWind = state.roundWind;
+  let nextRoundNumber = state.roundNumber;
+  let nextDealer = state.dealer;
+  let nextHonba = state.honba;
+
+  if (!matchEnded) {
+    if (dealerContinues) {
+      nextDealer = state.dealer;
+      nextRoundNumber = state.roundNumber;
+      nextHonba = state.honba + 1;
+    } else {
+      nextDealer = (state.dealer + 1) % 4;
+      nextRoundNumber = state.roundNumber + 1;
+      nextHonba = isDraw ? state.honba + 1 : 0;
+      if (nextRoundNumber > 4) {
+        nextRoundWind = state.roundWind + 1;
+        nextRoundNumber = 1;
+      }
+    }
+  }
+
   const resultText = score
     ? `和了: ${score.yakuman > 0 ? (score.yakuman === 1 ? "役満" : "ダブル役満") : score.limit && score.limit !== "none" ? { mangan: "満貫", haneman: "跳満", baiman: "倍満", sanbaiman: "三倍満", yakuman: "役満" }[score.limit] : `${score.han}飜${score.fu}符`}`
     : (message.split("!")[0] ?? message); // e.g. "流局", "途中流局: 九種九牌"
@@ -411,11 +471,12 @@ export function finishRound(
     : resultText;
   return {
     ...state,
-    players,
+    players: finalPlayers,
     dealer: nextDealer,
+    roundWind: nextRoundWind,
     roundNumber: nextRoundNumber,
     honba: nextHonba,
-    riichiSticks: nextRiichiSticks,
+    riichiSticks: finalRiichiSticks,
     winner,
     phase: matchEnded ? "ended" : "roundEnded",
     claimOptions: [],
@@ -428,13 +489,15 @@ export function finishRound(
     firstTurnInterrupted: false,
     pendingAbortiveDraw: null,
     calledDiscardKinds: emptyCalledDiscardKinds(),
-    message: responsibilityMessage ? `${message} [${responsibilityMessage}]` : message,
+    message: responsibilityMessage
+      ? `${message}${tobiSuffix} [${responsibilityMessage}]`
+      : `${message}${tobiSuffix}`,
     roundHistory: [
       ...state.roundHistory,
       {
         roundName: `${["東", "南", "西", "北"][state.roundWind]}${state.roundNumber}局 ${state.honba}本場`,
         resultText: historyResultText,
-        pointChanges: players.map((p, i) => p.points - state.players[i].points),
+        pointChanges: finalPlayers.map((p, i) => p.points - state.players[i].points),
         ...(responsibilityMessage ? { responsibilityMessage } : {}),
       },
     ],

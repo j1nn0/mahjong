@@ -1,4 +1,4 @@
-import { type Tile, type Meld, MeldType, PlayerWind } from "../game/types.js";
+import { type Tile, type Meld, MeldType, PlayerWind, Wind } from "../game/types.js";
 import { formatTile, sortHand, drawFromWall, drawDeadWall } from "../game/tiles.js";
 import { indexToTile } from "../game/agari.js";
 import { fullScore, type ScoreResult } from "../game/scoring.js";
@@ -82,14 +82,18 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ).state,
       );
     case "START_GAME": {
-      const dealer = state.dealer;
+      const dealer = (action as { type: "START_GAME"; dealer?: number }).dealer
+        ?? Math.floor(Math.random() * 4);
+      const resetPlayers = state.players.map(
+        (p) => ({ ...p, points: 25000 }),
+      ) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
       return dealRound(
-        state,
+        { ...state, players: resetPlayers, roundWind: Wind.Ton, startingDealer: dealer },
         dealer,
         1,
         0,
         0,
-        "\u30B2\u30FC\u30E0\u958B\u59CB\uFF01 \u67711\u5C40",
+        "ゲーム開始！ 東1局",
       );
     }
     case "NEXT_ROUND": {
@@ -100,7 +104,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         state.roundNumber,
         state.honba,
         state.riichiSticks,
-        `${roundName(state.roundNumber)}開始`,
+        `${roundName(state.roundNumber, state.roundWind)}開始`,
       );
     }
     case "DRAW": {
