@@ -145,3 +145,5 @@ vite.config.ts.timestamp-*
 
 #
 interview/
+dist-web/
+.temp/
