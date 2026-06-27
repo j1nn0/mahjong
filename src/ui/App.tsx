@@ -790,7 +790,7 @@ const App: React.FC = () => {
                   riichi={state.players[0].riichi}
                   isHuman={true}
                 />
-                <Box width={4}><Text> </Text></Box>
+                <Box width={3}><Text> </Text></Box>
                 <Box width={3}>
                   <Text color={tileColor(state.lastDrawnTile!)} bold>
                     {formatTile(state.lastDrawnTile!)}
@@ -926,7 +926,7 @@ const App: React.FC = () => {
                 riichi={state.players[0].riichi}
                 isHuman={true}
               />
-              <Box width={4}><Text> </Text></Box>
+              <Box width={3}><Text> </Text></Box>
               <Box width={3}>
                 <Text color={tileColor(state.lastDrawnTile!)} bold>
                   {formatTile(state.lastDrawnTile!)}
