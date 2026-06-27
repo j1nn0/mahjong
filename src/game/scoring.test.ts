@@ -23,6 +23,12 @@ function nan(): Tile {
 function haku(): Tile {
   return { suit: Suit.Dragon, value: 0 };
 }
+function hatsu(): Tile {
+  return { suit: Suit.Dragon, value: 1 };
+}
+function chun(): Tile {
+  return { suit: Suit.Dragon, value: 2 };
+}
 
 function detectParams(opts: {
   closed: Tile[];
@@ -32,6 +38,12 @@ function detectParams(opts: {
   roundWind?: number;
   playerWind?: number;
   riichi?: boolean;
+  ippatsu?: boolean;
+  doubleRiichi?: boolean;
+  haitei?: boolean;
+  houtei?: boolean;
+  chankan?: boolean;
+  rinshan?: boolean;
 }) {
   return {
     closedTiles: opts.closed,
@@ -41,12 +53,12 @@ function detectParams(opts: {
     roundWind: opts.roundWind ?? 0,
     playerWind: opts.playerWind ?? 0,
     isRiichi: opts.riichi ?? false,
-    isDoubleRiichi: false,
-    isIppatsu: false,
-    isHaitei: false,
-    isHoutei: false,
-    isRinshan: false,
-    isChankan: false,
+    isDoubleRiichi: opts.doubleRiichi ?? false,
+    isIppatsu: opts.ippatsu ?? false,
+    isHaitei: opts.haitei ?? false,
+    isHoutei: opts.houtei ?? false,
+    isRinshan: opts.rinshan ?? false,
+    isChankan: opts.chankan ?? false,
   };
 }
 
@@ -156,7 +168,152 @@ describe('detectYaku', () => {
     expect(result.groups).not.toBeNull();
     expect(result.yaku.some((y) => y.id === YakuId.Toitoi)).toBe(true);
   });
-});
+  it('detects ippatsu with riichi', () => {
+    const closed13 = [m(1), m(2), m(3), p(4), p(5), p(6), s(7), s(8), s(9), p(1), p(2), p(3), s(5)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: s(5), riichi: true, ippatsu: true }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Ippatsu)).toBe(true);
+  });
+
+  it('detects double riichi', () => {
+    const closed13 = [m(1), m(2), m(3), p(4), p(5), p(6), s(7), s(8), s(9), p(1), p(2), p(3), s(5)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: s(5), riichi: true, doubleRiichi: true }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.DoubleRiichi)).toBe(true);
+  });
+
+  it('detects haitei (last draw)', () => {
+    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), p(4), p(5)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: p(5), haitei: true }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Haitei)).toBe(true);
+  });
+
+  it('detects houtei (last discard)', () => {
+    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), p(4), p(5)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: p(5), houtei: true }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Houtei)).toBe(true);
+  });
+
+  it('detects chankan (rob a kan)', () => {
+    const closed13 = [m(2), m(3), m(4), p(5), p(6), p(7), s(3), s(4), s(5), p(2), p(3), p(4), p(5)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: p(5), chankan: true }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Chankan)).toBe(true);
+  });
+
+
+  it('detects iipeiko (two identical sequences, closed)', () => {
+    // 123m 123m 456p 789s + 55s pair
+    const closed13 = [m(1), m(2), m(3), m(1), m(2), m(3), p(4), p(5), p(6), s(7), s(8), s(9), s(5)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: s(5) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Iipeiko)).toBe(true);
+  });
+
+  it('detects ryanpeiko (two pairs of identical sequences, closed)', () => {
+    // 123m 123m 456p 456p + 77s pair
+    const closed13 = [m(1), m(2), m(3), m(1), m(2), m(3), p(4), p(5), p(6), p(4), p(5), p(6), s(7)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: s(7) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Ryanpeiko)).toBe(true);
+  });
+
+  it('detects sanshoku doujun (same sequence in 3 suits)', () => {
+    // 345m 345p 345s 678s + 77m pair
+    const closed13 = [m(3), m(4), m(5), p(3), p(4), p(5), s(3), s(4), s(5), s(6), s(7), s(8), m(7)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: m(7) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.SanshokuDoujun)).toBe(true);
+  });
+
+  it('detects sanshoku doukou (same triplet in 3 suits)', () => {
+    // 111m 111p 111s 234m + 55m pair
+    const closed13 = [m(1), m(1), m(1), p(1), p(1), p(1), s(1), s(1), s(1), m(2), m(3), m(4), m(5)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: m(5) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.SanshokuDoukou)).toBe(true);
+  });
+
+  it('detects chanta (mixed outside hand)', () => {
+    // 123m 789m 123s 111p + ton-ton pair
+    const closed13 = [m(1), m(2), m(3), m(7), m(8), m(9), s(1), s(2), s(3), p(1), p(1), p(1), ton()];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: ton() }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Chanta)).toBe(true);
+  });
+
+  it('detects junchan (pure outside hand)', () => {
+    // 123m 789m 123s 789s + 99m pair (no honors)
+    const closed13 = [m(1), m(2), m(3), m(7), m(8), m(9), s(1), s(2), s(3), s(7), s(8), s(9), m(9)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: m(9) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Junchan)).toBe(true);
+  });
+
+  it('detects honroutou (all terminals + honors, all triplets)', () => {
+    // 111m 999p 111s ton-ton-ton + nan-nan pair
+    const closed13 = [m(1), m(1), m(1), p(9), p(9), p(9), s(1), s(1), s(1), ton(), ton(), ton(), nan()];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: nan() }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Honroutou)).toBe(true);
+  });
+
+  it('detects chinroutou (all terminal triplets)', () => {
+    // 111m 999m 111p 999p + 99m pair
+    const closed13 = [m(1), m(1), m(1), m(9), m(9), m(9), p(1), p(1), p(1), p(9), p(9), p(9), m(9)];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: m(9) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Chinroutou)).toBe(true);
+  });
+
+  it('detects shousangen (2 dragon triplets + dragon pair)', () => {
+    // haku triplet + hatsu triplet + 123m 456m + chun-chun pair
+    const closed13 = [haku(), haku(), haku(), hatsu(), hatsu(), hatsu(), m(1), m(2), m(3), m(4), m(5), m(6), chun()];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: chun() }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Shousangen)).toBe(true);
+  });
+
+  it('detects ryuuiisou (all green)', () => {
+    // s2,s2,s2 s3,s3,s3 s4,s4,s4 s6,s6,s6 + hatsu-hatsu pair
+    const closed13 = [s(2), s(2), s(2), s(3), s(3), s(3), s(4), s(4), s(4), s(6), s(6), hatsu(), hatsu()];
+    const result = detectYaku(detectParams({ closed: closed13, winTile: s(6) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Ryuuiisou)).toBe(true);
+  });
+
+  it('detects sankantsu (3 quads)', () => {
+    // 3 quads in melds + hand has 4 tiles before draw (1 sequence + 1 pair-half)
+    // After draw winTile m(3): 5 hand tiles = sequence (5,6,7) + pair (3,3)
+    const closedTiles = [m(5), m(6), m(7), m(3)];
+    const melds: Meld[] = [
+      { type: MeldType.ClosedKan, tiles: [m(2), m(2), m(2), m(2)] },
+      { type: MeldType.ClosedKan, tiles: [p(4), p(4), p(4), p(4)] },
+      { type: MeldType.ClosedKan, tiles: [s(6), s(6), s(6), s(6)] },
+    ];
+    const result = detectYaku(detectParams({ closed: closedTiles, melds, winTile: m(3) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Sankantsu)).toBe(true);
+  });
+
+  it('detects suukantsu (4 quads)', () => {
+    // 4 quads in melds + hand has 1 tile before draw (tanki wait)
+    // After draw winTile m(5): 2 hand tiles = pair (5,5)
+    const closedTiles = [m(5)];
+    const melds: Meld[] = [
+      { type: MeldType.ClosedKan, tiles: [m(1), m(1), m(1), m(1)] },
+      { type: MeldType.ClosedKan, tiles: [m(2), m(2), m(2), m(2)] },
+      { type: MeldType.ClosedKan, tiles: [m(3), m(3), m(3), m(3)] },
+      { type: MeldType.ClosedKan, tiles: [m(4), m(4), m(4), m(4)] },
+    ];
+    const result = detectYaku(detectParams({ closed: closedTiles, melds, winTile: m(5) }));
+    expect(result.groups).not.toBeNull();
+    expect(result.yaku.some((y) => y.id === YakuId.Suukantsu)).toBe(true);
+  });
+  });
+
 
 describe('totalHan / totalYakuman', () => {
   it('sums han correctly for tanyao riichi tsumo (+ pinfu)', () => {

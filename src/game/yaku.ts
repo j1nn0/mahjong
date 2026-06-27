@@ -613,8 +613,35 @@ export function detectYaku(params: DetectYakuParams): {
     return { yaku: resultingYaku, groups: handGroups };
   }
 
-  // Chiitoitsu (7 pairs)
+  // Chiitoitsu (7 pairs) — but defer to iipeiko/ryanpeiko if standard
+  // decomposition yields identical sequences (higher priority yaku)
   if (isClosed && isChiitoitsuHand(counts)) {
+    const stdGroups = decomposeStandardHand([...closedTiles, winTile], melds, winTile, isTsumo);
+    if (stdGroups) {
+      const seqs = stdGroups.filter((g) => g.type === "sequence");
+      if (seqs.length > 0) {
+        const seqCounts = new Map<number, number>();
+        for (const seq of seqs) {
+          const key = seq.lowestIndex;
+          seqCounts.set(key, (seqCounts.get(key) ?? 0) + 1);
+        }
+        let identicalSeqPairs = 0;
+        for (const count of seqCounts.values()) {
+          if (count >= 2) identicalSeqPairs++;
+        }
+        if (identicalSeqPairs >= 2) {
+          resultingYaku.push(metaResult(YakuId.Ryanpeiko));
+          handGroups.groups = stdGroups;
+          return { yaku: resultingYaku, groups: handGroups };
+        }
+        if (identicalSeqPairs >= 1) {
+          resultingYaku.push(metaResult(YakuId.Iipeiko));
+          handGroups.groups = stdGroups;
+          return { yaku: resultingYaku, groups: handGroups };
+        }
+      }
+    }
+    // Fallback to chiitoitsu
     resultingYaku.push(metaResult(YakuId.Chiitoitsu));
     const pairs: Group[] = [];
     for (let i = 0; i < 34; i++) {
@@ -847,7 +874,12 @@ export function detectYaku(params: DetectYakuParams): {
     }
   }
 
-  // Suukantsu
+  // Sankantsu (3 quads, 2 han)
+  if (quads.length === 3) {
+    resultingYaku.push(metaResult(YakuId.Sankantsu));
+  }
+
+  // Suukantsu (4 quads)
   if (quads.length === 4) {
     resultingYaku.push(metaResult(YakuId.Suukantsu));
   }
