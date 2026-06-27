@@ -12,7 +12,7 @@ export const KeyLegend: React.FC<KeyLegendProps> = ({ phase }) => {
         <Text dimColor>
           <Text color="yellow">L</Text>:ロン <Text color="yellow">C</Text>:チー{" "}
           <Text color="yellow">P</Text>:ポン <Text color="yellow">K</Text>:カン Space/Esc:パス{" "}
-          ←→:選択
+          ←→:選択 Enter:決定
         </Text>
       </Box>
     );

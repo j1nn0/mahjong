@@ -516,6 +516,25 @@ const App: React.FC = () => {
           return;
         }
       }
+      if (key.return) {
+        const opt = humanOptions[claimSelectedIndex];
+        if (!opt) return;
+        switch (opt.type) {
+          case "ron":
+            dispatch({ type: "RON", winner: 0 });
+            break;
+          case "chi":
+            dispatch({ type: "CHI", player: 0, optionIndex: state.claimOptions.indexOf(opt) });
+            break;
+          case "pon":
+            dispatch({ type: "PON", player: 0 });
+            break;
+          case "daiminkan":
+            dispatch({ type: "DAIMINKAN", player: 0 });
+            break;
+        }
+        return;
+      }
       if (input === " " || key.escape || input === "q") {
         dispatch({ type: "PASS_CLAIM" });
         return;
