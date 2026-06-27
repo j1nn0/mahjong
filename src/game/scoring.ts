@@ -151,10 +151,14 @@ export function calculateScore(
   const fu = calculateFu(handGroups, detectedYaku, roundWind, playerWind);
 
   // Dora count (not included in hand yaku - purely additive)
+  // Ura dora only counts for riichi (or double riichi) winners
   const doraIndicatorsList = doraIndicators ?? [];
   const uraDoraIndicatorsList = uraDoraIndicators ?? [];
   const allHandTiles = [...handGroups.groups.flatMap((g) => g.tiles)];
-  const doraCounted = countDora(allHandTiles, doraIndicatorsList, true, uraDoraIndicatorsList);
+  const isRiichiWinner = detectedYaku.some(
+    (y) => y.id === YakuId.Riichi || y.id === YakuId.DoubleRiichi,
+  );
+  const doraCounted = countDora(allHandTiles, doraIndicatorsList, isRiichiWinner, uraDoraIndicatorsList);
   const han = yakuHan + doraCounted;
 
   let basePoints = fu * Math.pow(2, han + 2);
