@@ -869,48 +869,50 @@ const App: React.FC = () => {
         </Box>
         <TurnLogView entries={turnLogRef.current} />
         <Text dimColor>{"─".repeat(40)}</Text>
-        <Box marginTop={1} marginBottom={1}>
-          <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
-          <Text dimColor>({state.players[0].points}点) </Text>
-          {state.players[0].riichi && <Text color="yellow">リーチ中 </Text>}
-        </Box>
-        <Box marginBottom={1}>
-          <Text bold>あなたの捨て牌: </Text>
-          <DiscardView
-            discards={state.players[0].discards}
-            terminalWidth={terminalWidth}
-            compact={false}
-          />
-        </Box>
-        {state.players[0].melds.length > 0 && (
+        <Box alignItems="center" flexDirection="column" width="100%">
+          <Box marginTop={1} marginBottom={1}>
+            <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
+            <Text dimColor>({state.players[0].points}点) </Text>
+            {state.players[0].riichi && <Text color="yellow">リーチ中 </Text>}
+          </Box>
           <Box marginBottom={1}>
-            <Text bold>あなたの副露: </Text>
-            <MeldView melds={state.players[0].melds} />
+            <Text bold>あなたの捨て牌: </Text>
+            <DiscardView
+              discards={state.players[0].discards}
+              terminalWidth={terminalWidth}
+              compact={false}
+            />
           </Box>
-        )}
-        <HandView
-          tiles={hand}
-          selectedIndex={selectedIndex}
-          riichi={state.players[0].riichi}
-          isHuman={true}
-        />
-        <TurnInfo wallRemaining={state.wall.length} deadWallRemaining={state.deadWall.tiles.length} riichiSticks={state.riichiSticks} />
-        <ActionBar
-          canTsumo={humanCanTsumo}
-          canRiichi={humanCanRiichi}
-          canKan={humanCanKan}
-          canKyuushu={humanCanKyuushu}
-        />
-        {state.currentPlayer === 0 && state.phase === "playing" && (
-          <Box>
-            {humanShanten >= 0 && <Text>シャンテン数:{humanShanten} </Text>}
-            {humanWaits.length > 0 && (
-              <Text color="blue">
-                待ち:{humanWaits.length}種 [{humanWaits.map(formatTile).join(" ")}]
-              </Text>
-            )}
-          </Box>
-        )}
+          {state.players[0].melds.length > 0 && (
+            <Box marginBottom={1}>
+              <Text bold>あなたの副露: </Text>
+              <MeldView melds={state.players[0].melds} />
+            </Box>
+          )}
+          <HandView
+            tiles={hand}
+            selectedIndex={selectedIndex}
+            riichi={state.players[0].riichi}
+            isHuman={true}
+          />
+          <TurnInfo wallRemaining={state.wall.length} deadWallRemaining={state.deadWall.tiles.length} riichiSticks={state.riichiSticks} />
+          <ActionBar
+            canTsumo={humanCanTsumo}
+            canRiichi={humanCanRiichi}
+            canKan={humanCanKan}
+            canKyuushu={humanCanKyuushu}
+          />
+          {state.currentPlayer === 0 && state.phase === "playing" && (
+            <Box>
+              {humanShanten >= 0 && <Text>シャンテン数:{humanShanten} </Text>}
+              {humanWaits.length > 0 && (
+                <Text color="blue">
+                  待ち:{humanWaits.length}種 [{humanWaits.map(formatTile).join(" ")}]
+                </Text>
+              )}
+            </Box>
+          )}
+        </Box>
         <Box marginTop={1}>
           <Text bold>{state.message}</Text>
         </Box>
