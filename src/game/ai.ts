@@ -43,31 +43,38 @@ export function evaluateDanger(
   const idx = tileToIndex(tile);
   let worst = 0;
 
-  // 全体で見えている該当牌の枚数をカウントする（字牌の危険度評価用）
-  let visibleCount = 0;
+  // Compute visible count for ALL tiles (0-33) for kabe detection
+  const visibleCounts = new Array<number>(34).fill(0);
   for (const discards of opponentDiscards) {
-    visibleCount += discards.filter(d => d.suit === tile.suit && d.value === tile.value).length;
+    for (const d of discards) {
+      visibleCounts[tileToIndex(d)]++;
+    }
   }
   if (myHand) {
-    visibleCount += myHand.filter(h => h.suit === tile.suit && h.value === tile.value).length;
+    for (const h of myHand) {
+      visibleCounts[tileToIndex(h)]++;
+    }
   }
   if (opponentMelds) {
     for (const melds of opponentMelds) {
       for (const m of melds) {
-        visibleCount += m.tiles.filter(t => t.suit === tile.suit && t.value === tile.value).length;
+        for (const t of m.tiles) {
+          visibleCounts[tileToIndex(t)]++;
+        }
       }
     }
   }
+
+  const visibleCount = visibleCounts[idx] ?? 0;
 
   for (let p = 0; p < opponentDiscards.length; p++) {
     if (selfIndex !== undefined && p === selfIndex) continue;
     const discards = opponentDiscards[p]!;
     const riichi = opponentRiichi[p] ?? false;
     const melds = opponentMelds ? (opponentMelds[p] ?? []) : [];
-    const d = dangerForPlayer(tile, idx, discards, riichi, melds, visibleCount);
+    const d = dangerForPlayer(tile, idx, discards, riichi, melds, visibleCount, visibleCounts);
     if (d > worst) worst = d;
   }
-
   return worst;
 }
 
@@ -83,6 +90,7 @@ function dangerForPlayer(
   isRiichi: boolean,
   melds: readonly Meld[],
   visibleCount: number,
+  visibleCounts?: readonly number[],
 ): number {
   // Genbutsu: 相手の捨て牌そのもの → 100%安全
   if (discards.some(d => d.suit === tile.suit && d.value === tile.value)) {
@@ -99,7 +107,27 @@ function dangerForPlayer(
     }
   }
 
-  // 2. ホンイツ・チンイツの警戒 (特定のSuitで2つ以上副露している場合、そのSuitの危険度を上げる)
+  // 2. 壁 (kabe) 検出: ある数牌が4枚全て見えている場合、隣接牌の危険度を下げる
+  if (tile.suit !== Suit.Wind && tile.suit !== Suit.Dragon && visibleCounts) {
+    const suitBase = tile.suit === Suit.Man ? 0 : tile.suit === Suit.Pin ? 9 : 18;
+    const v = tile.value;
+    // v+1 が壁 (4枚見え) なら vのリャンメン待ち(v, v+1)は不可能 → 安全側へ
+    if (v < 9 && visibleCounts[suitBase + v] === 4) {
+      // 牌vは壁(v+1が4枚見え)で守られている: リャンメン待ち(v, v+1)不可
+      baseDanger -= 2;
+    }
+    // v-1 が壁 (4枚見え) なら vのリャンメン待ち(v-1, v)は不可能 → 安全側へ
+    if (v > 1 && visibleCounts[suitBase + v - 2] === 4) {
+      // v-1壁
+      baseDanger -= 2;
+    }
+    // v自体が3枚見え → 残り1枚を持っている場合、それで待つ可能性 (タンキ・シャンポン) があるので少し危険
+    if (visibleCount >= 3 && visibleCount < 4) {
+      baseDanger += 2;
+    }
+  }
+
+  // 3. ホンイツ・チンイツの警戒
   if (melds.length >= 2) {
     const suitCounts: Record<string, number> = {};
     for (const m of melds) {
@@ -115,7 +143,7 @@ function dangerForPlayer(
     }
   }
 
-  // 3. 字牌（風牌・三元牌）の危険度補正
+  // 4. 字牌危険度補正
   if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) {
     if (visibleCount >= 4) {
       return 1;
@@ -134,7 +162,7 @@ function dangerForPlayer(
     }
   }
 
-  // 4. リーチ者向け追加判定
+  // 5. リーチ者向け追加判定
   if (isRiichi) {
     const terminalDiscards = discards.filter(d => 
       d.suit !== Suit.Wind && d.suit !== Suit.Dragon && 
@@ -153,7 +181,7 @@ function dangerForPlayer(
     }
   }
 
-  return baseDanger;
+  return Math.max(1, baseDanger);
 }
 
 // ── Shanten ──────────────────────────────────────────────────────────

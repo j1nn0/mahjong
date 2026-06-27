@@ -147,6 +147,26 @@ describe('evaluateDanger', () => {
     const danger = evaluateDanger(m(5), [[m(1)], [m(2)], [m(3)], []], [true, false, false, false]);
     expect(danger).toBe(8);
   });
+  it('detects kabe: reduces danger when adjacent tile has 4 visible copies', () => {
+    // m(5) with m(6) fully visible (4 copies in discards): ryanmen 5-6 is impossible
+    const dangerWithKabe = evaluateDanger(m(5), [[m(6), m(6), m(6), m(6)]], [true]);
+    // Should be lower than without kabe
+    const dangerNoKabe = evaluateDanger(m(5), [[m(6), m(6), m(6)]], [true]);
+    expect(dangerWithKabe).toBeLessThan(dangerNoKabe);
+  });
+  it('raises danger when 3 copies are visible across melds and discards (near-wall threat)', () => {
+    // Opponent 0: not riichi, no melds, no m5 discards
+    // Opponent 1: riichi, no melds, no m5 discards
+    // Global visible: 3 copies of m5 (2 in opponent 0 discards, 1 in my hand)
+    // For opponent 1 (riichi), m5 is non-suji, visibleCount=3 → +2 penalty
+    const danger3 = evaluateDanger(
+      m(5), [[m(5), m(5)], []], [false, true], [[], []], [m(5)],
+    );
+    const danger2 = evaluateDanger(
+      m(5), [[m(5)], []], [false, true], [[], []], [m(5)],
+    );
+    expect(danger3).toBeGreaterThan(danger2);
+  });
 });
 
 describe('aiChooseDiscard', () => {
