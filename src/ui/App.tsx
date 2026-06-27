@@ -309,6 +309,7 @@ const App: React.FC = () => {
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
   const processingRef = useRef(false);
   const turnLogRef = useRef<{ player: number; tile: Tile }[]>([]);
+  const prevShowDrawnRef = useRef(false);
   const [startupMode, setStartupMode] = useState<"loading" | "choose" | "ready">("loading");
   const [savedState, setSavedState] = useState<GameState | null>(null);
   const { stdout } = useStdout();
@@ -419,6 +420,13 @@ const App: React.FC = () => {
   const hand = getHumanHand(state);
   const drawnIndex = state.lastDrawnTile != null ? hand.indexOf(state.lastDrawnTile) : -1;
   const showDrawnSeparate = drawnIndex >= 0 && turnTileCount(state.players[0]) === 14;
+  // Auto-select drawn tile when drawn-separate view newly activates
+  useEffect(() => {
+    if (showDrawnSeparate && !prevShowDrawnRef.current) {
+      setSelectedIndex(drawnIndex);
+    }
+    prevShowDrawnRef.current = showDrawnSeparate;
+  }, [showDrawnSeparate, drawnIndex]);
   const humanCanTsumo = canHumanTsumo(state);
   const humanCanRiichi = canHumanRiichi(state);
   const humanCanKakan = canHumanKakan(state, selectedIndex);
