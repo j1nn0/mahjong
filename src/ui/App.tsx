@@ -418,7 +418,7 @@ const App: React.FC = () => {
 
   const hand = getHumanHand(state);
   const drawnIndex = state.lastDrawnTile != null ? hand.indexOf(state.lastDrawnTile) : -1;
-  const showDrawnSeparate = drawnIndex >= 0 && hand.length === 14;
+  const showDrawnSeparate = drawnIndex >= 0 && turnTileCount(state.players[0]) === 14;
   const humanCanTsumo = canHumanTsumo(state);
   const humanCanRiichi = canHumanRiichi(state);
   const humanCanKakan = canHumanKakan(state, selectedIndex);
