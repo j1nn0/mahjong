@@ -115,15 +115,16 @@ const MeldView: React.FC<MeldViewProps> = ({ melds }) => {
 
 interface TurnInfoProps {
   wallRemaining: number;
+  deadWallRemaining: number;
   riichiSticks: number;
 }
 
-const TurnInfo: React.FC<TurnInfoProps> = ({ wallRemaining, riichiSticks }) => {
+const TurnInfo: React.FC<TurnInfoProps> = ({ wallRemaining, deadWallRemaining, riichiSticks }) => {
   const turns = Math.floor(wallRemaining / 4);
   return (
     <Box marginTop={1}>
       <Text bold>
-        残り{turns}巡 (山:{wallRemaining}枚) | リーチ棒:{riichiSticks}
+        残り{turns}巡 (山:{wallRemaining}枚 王牌:{deadWallRemaining}枚) | リーチ棒:{riichiSticks}
       </Text>
     </Box>
   );
@@ -780,7 +781,7 @@ const App: React.FC = () => {
             riichi={state.players[0].riichi}
             isHuman={true}
           />
-          <TurnInfo wallRemaining={state.wall.length} riichiSticks={state.riichiSticks} />
+          <TurnInfo wallRemaining={state.wall.length} deadWallRemaining={state.deadWall.tiles.length} riichiSticks={state.riichiSticks} />
           {state.currentPlayer === 0 && state.phase === "claiming" && (
             <Box>
               {humanShanten >= 0 && <Text>シャンテン数:{humanShanten} </Text>}
@@ -893,7 +894,7 @@ const App: React.FC = () => {
           riichi={state.players[0].riichi}
           isHuman={true}
         />
-        <TurnInfo wallRemaining={state.wall.length} riichiSticks={state.riichiSticks} />
+        <TurnInfo wallRemaining={state.wall.length} deadWallRemaining={state.deadWall.tiles.length} riichiSticks={state.riichiSticks} />
         <ActionBar
           canTsumo={humanCanTsumo}
           canRiichi={humanCanRiichi}
