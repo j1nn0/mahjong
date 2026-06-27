@@ -299,7 +299,8 @@ const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canK
 // ── Main game component ───────────────────────────────────────────
 
 const WIND_NAMES = ["東", "南", "西", "北"];
-const roundName = (roundNumber: number) => `東${roundNumber}局`;
+const roundName = (roundNumber: number, roundWind: number = 0) =>
+  `${WIND_NAMES[roundWind] ?? "東"}${roundNumber}局`;
 
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
@@ -607,7 +608,7 @@ const App: React.FC = () => {
         <Text bold>{state.message}</Text>
         <Text dimColor>
           {state.phase === "roundEnded"
-            ? `次局: ${roundName(state.roundNumber)} / 親: P${state.dealer + 1} / 本場: ${state.honba} / 供託: ${state.riichiSticks}`
+            ? `次局: ${roundName(state.roundNumber, state.roundWind)} / 親: P${state.dealer + 1} / 本場: ${state.honba} / 供託: ${state.riichiSticks}`
             : "対戦終了"}
         </Text>
         <DoraView state={state} />
@@ -696,7 +697,7 @@ const App: React.FC = () => {
       <Box width={terminalWidth}>
         <Box flexDirection="column" padding={1} width="100%">
           <Text bold>
-            {roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}
+            {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
           </Text>
           <DoraView state={state} />
           <Text dimColor>{"─".repeat(40)}</Text>
@@ -807,7 +808,7 @@ const App: React.FC = () => {
     <Box width={terminalWidth}>
       <Box flexDirection="column" padding={1} width="100%">
         <Text bold>
-          {roundName(state.roundNumber)} / 親: P{state.dealer + 1} / 本場: {state.honba}
+          {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
         </Text>
         <DoraView state={state} />
         <Box flexDirection="column" width="100%">
