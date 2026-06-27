@@ -466,8 +466,9 @@ export function finishRound(
     }
   }
 
+  const yakuStr = score ? score.yaku.map((y) => y.name).join("・") : "";
   const resultText = score
-    ? `和了: ${score.yakuman > 0 ? (score.yakuman === 1 ? "役満" : "ダブル役満") : score.limit && score.limit !== "none" ? { mangan: "満貫", haneman: "跳満", baiman: "倍満", sanbaiman: "三倍満", yakuman: "役満" }[score.limit] : `${score.han}飜${score.fu}符`}`
+    ? `和了: ${yakuStr} (${score.yakuman > 0 ? (score.yakuman === 1 ? "役満" : `ダブル役満×${score.yakuman}`) : score.limit && score.limit !== "none" ? { mangan: "満貫", haneman: "跳満", baiman: "倍満", sanbaiman: "三倍満", yakuman: "役満" }[score.limit] : `${score.han}飜${score.fu}符`})`
     : (message.split("!")[0] ?? message); // e.g. "流局", "途中流局: 九種九牌"
   const historyResultText = responsibilityMessage
     ? `${resultText} [${responsibilityMessage}]`
