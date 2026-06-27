@@ -61,16 +61,18 @@ React Ink と TypeScript で作る、ターミナル上の一人用リーチ麻�
 - Node.js
 - pnpm
 
-## Setup
-
-```bash
-pnpm install
-```
-
 ## Run
+
+### ターミナル版 (Ink TUI):
 
 ```bash
 pnpm start
+```
+
+### ブラウザ版 (SVG牌・サイズ調整可能):
+
+```bash
+pnpm dev:web     # http://localhost:5173
 ```
 
 保存済み対戦がある場合、起動時に続きから再開するか、新しい対戦を始めるかを選べます。保存ファイルは `.mahjong-save.json` です。
@@ -102,8 +104,8 @@ MAHJONG_AI_DELAY=1000 pnpm start  # 低速
 - `C`: チー
 - `P`: ポン
 - `K`: 大明カン
+- `Enter`: 選択中の候補を決定
 - `Space` / `Esc`: 鳴かずにパス
-
 局終了後:
 
 - `N` / `Enter` / `Space`: 次局へ進む
@@ -126,14 +128,12 @@ pnpm exec tsc --noEmit
 
 ```text
 src/
-  game/        牌、あがり形、役、点数、ドラ、AI
-  state/       対戦状態（types, reducer, selectors）、局進行（finishRound, claimPhase）、保存と再開
+  game/        牌、あがり形、役、点数、ドラ、AI（TUI/Web 共通）
+  state/       対戦状態（types, reducer, selectors）、局進行、保存と再開（共通）
   ui/          Ink/React のターミナルUI（App, DiscardView, WaitsInfo, KeyLegend 他）
-  index.tsx    エントリーポイント
+  web/         ブラウザ版React DOM UI（Board, TileSVG, main）
+  index.tsx    TUI エントリポイント
+vite.config.ts Vite 設定（ブラウザ版ビルド用）
 docs/adr/      重要な設計判断
 CONTEXT.md     プロジェクト用語集
 ```
-
-## Notes
-
-東風戦を完走できる状態に仕上がっています。今後の拡張候補は半荘（東南戦）・西入・順位精算（ウマ・オカ）などがありますが、現時点では優先していません。
