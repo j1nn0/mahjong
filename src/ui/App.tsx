@@ -558,17 +558,36 @@ const App: React.FC = () => {
     }
 
     if (key.leftArrow) {
-      setSelectedIndex((prev) => (hand.length > 0 ? (prev - 1 + hand.length) % hand.length : 0));
+      setSelectedIndex((prev) => {
+        if (hand.length === 0) return 0;
+        if (!showDrawnSeparate) return (prev - 1 + hand.length) % hand.length;
+        // Visual order: non-drawn tiles left-to-right, drawn tile at end
+        const visual = prev === drawnIndex ? hand.length - 1 : prev > drawnIndex ? prev - 1 : prev;
+        const newVisual = (visual - 1 + hand.length) % hand.length;
+        return newVisual === hand.length - 1 ? drawnIndex : newVisual >= drawnIndex ? newVisual + 1 : newVisual;
+      });
       return;
     }
     if (key.rightArrow) {
-      setSelectedIndex((prev) => (hand.length > 0 ? (prev + 1) % hand.length : 0));
+      setSelectedIndex((prev) => {
+        if (hand.length === 0) return 0;
+        if (!showDrawnSeparate) return (prev + 1) % hand.length;
+        // Visual order: non-drawn tiles left-to-right, drawn tile at end
+        const visual = prev === drawnIndex ? hand.length - 1 : prev > drawnIndex ? prev - 1 : prev;
+        const newVisual = (visual + 1) % hand.length;
+        return newVisual === hand.length - 1 ? drawnIndex : newVisual >= drawnIndex ? newVisual + 1 : newVisual;
+      });
       return;
     }
 
     const num = parseInt(input, 10);
     if (num >= 1 && num <= hand.length) {
-      setSelectedIndex(num - 1);
+      if (!showDrawnSeparate) {
+        setSelectedIndex(num - 1);
+      } else {
+        const visual = num - 1;
+        setSelectedIndex(visual === hand.length - 1 ? drawnIndex : visual >= drawnIndex ? visual + 1 : visual);
+      }
       return;
     }
 
