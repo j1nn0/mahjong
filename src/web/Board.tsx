@@ -3,9 +3,10 @@ import { createInitialState, gameReducer, processAiTurn, turnTileCount } from '.
 import { getHumanHand } from '../state/selectors.js';
 import { formatTile, getDoraIndicators } from '../game/tiles.js';
 import { calcShanten } from '../game/agari.js';
-import type { GameState, ClaimOption } from '../state/GameState.js';
+import type { ClaimOption } from '../state/GameState.js';
 import type { Tile } from '../game/types.js';
-import { TileSVG } from './Tile.js';
+import { TileSVG, TileBack } from './Tile.js';
+
 const AI_DELAY = 600;
 
 const WIND_NAMES = ['東', '南', '西', '北'];
@@ -23,237 +24,71 @@ const claimLabel = (option: ClaimOption): string => {
   }
 };
 
-// ── Style constants ──
+// ── Helpers ──
 
-const styles = {
-  container: {
-    fontFamily: 'system-ui, sans-serif',
-    maxWidth: 1000,
-    margin: '0 auto',
-    padding: 16,
-    color: '#222',
-    background: '#fafaf0',
-    minHeight: '100vh',
-  } as React.CSSProperties,
-  header: {
-    textAlign: 'center' as const,
-    fontWeight: 'bold',
-    fontSize: 18,
-    marginBottom: 4,
-  },
-  doraRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 4,
-    marginBottom: 8,
-  },
-  section: {
-    border: '1px solid #ccc',
-    borderRadius: 8,
-    padding: '8px 12px',
-    marginBottom: 8,
-    background: '#fff',
-  } as React.CSSProperties,
-  opponentRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 12,
-    marginBottom: 8,
-  } as React.CSSProperties,
-  playerArea: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    gap: 4,
-  },
-  handRow: {
-    display: 'flex',
-    justifyContent: 'center',
-    flexWrap: 'wrap' as const,
-    gap: 1,
-    marginTop: 4,
-  },
-  hand: {
-    display: 'flex',
-    gap: 1,
-  },
-  discardRiver: {
-    display: 'flex',
-    flexWrap: 'wrap' as const,
-    gap: 2,
-    marginTop: 4,
-    minHeight: 40,
-  } as React.CSSProperties,
-  infoText: {
-    fontSize: 14,
-    color: '#555',
-  },
-  shanten: {
-    fontSize: 14,
-    color: '#999',
-  },
-  message: {
-    fontSize: 16,
-    fontWeight: 'bold' as const,
-    textAlign: 'center' as const,
-    marginTop: 8,
-  },
-  claimButton: {
-    padding: '6px 14px',
-    borderRadius: 6,
-    border: '1px solid #aaa',
-    background: '#fff',
-    cursor: 'pointer',
-    fontSize: 14,
-  } as React.CSSProperties,
-  claimMenu: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 8,
-    flexWrap: 'wrap' as const,
-    marginTop: 8,
-  } as React.CSSProperties,
-  actionBar: {
-    display: 'flex',
-    justifyContent: 'center',
-    gap: 8,
-    marginTop: 8,
-    flexWrap: 'wrap' as const,
-  } as React.CSSProperties,
-  actionButton: {
-    padding: '4px 12px',
-    borderRadius: 4,
-    border: '1px solid #888',
-    cursor: 'pointer',
-    fontSize: 13,
-  } as React.CSSProperties,
-  divider: {
-    border: 'none',
-    borderTop: '1px dashed #ccc',
-    margin: '8px 0',
-  } as React.CSSProperties,
-};
+const greenGrad = 'linear-gradient(180deg, #2d6a2d 0%, #1f5a1f 100%)';
 
-// ── Hand view ──
+// ── Sub-components ──
 
 interface HandViewProps {
   tiles: readonly Tile[];
   selectedIndex: number;
-  isHuman: boolean;
   tileSize: number;
 }
 
-const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, isHuman, tileSize }) => {
-  if (!isHuman) {
-    return <div style={{ color: '#aaa' }}>{'🀫 '.repeat(tiles.length)}</div>;
-  }
-  return (
-    <div style={{ display: 'flex', gap: 1 }}>
-      {tiles.map((tile, i) => (
-        <TileSVG
-          key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`}
-          tile={tile}
-          size={tileSize}
-          selected={i === selectedIndex}
-        />
-      ))}
-    </div>
-  );
-};
-
-// ── Opponent info ──
-
-interface OpponentInfoProps {
-  label: string;
-  tileCount: number;
-  points: number;
-  riichi: boolean;
-}
-
-const OpponentInfo: React.FC<OpponentInfoProps> = ({ label, tileCount, points, riichi }) => (
-  <div style={{ textAlign: 'center', fontSize: 13, color: '#555' }}>
-    <div><strong>{label}</strong> {riichi && '🔥'}</div>
-    <div>{points}点</div>
-    <div style={{ color: '#aaa' }}>{'🀫'.repeat(Math.min(tileCount, 8))}</div>
-  </div>
-);
-
-// ── Dora view ──
-
-interface DoraViewProps {
-  state: GameState;
-  tileSize: number;
-}
-
-const DoraView: React.FC<DoraViewProps> = ({ state, tileSize }) => {
-  const indicators = getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount);
-  if (indicators.length === 0) return null;
-  return (
-    <div style={styles.doraRow}>
-      <span style={{ fontWeight: 'bold', fontSize: 13 }}>ドラ表示: </span>
-      {indicators.map((tile, i) => (
-        <TileSVG key={`dora-${tile.suit}-${tile.value}-${i}`} tile={tile} size={tileSize * 0.7} />
-      ))}
-    </div>
-  );
-};
-
-// ── Claim menu ──
-
-interface ClaimMenuProps {
-  options: readonly ClaimOption[];
-  selectedIndex: number;
-  onSelect: (index: number) => void;
-  onConfirm: (option: ClaimOption) => void;
-}
-
-const ClaimMenu: React.FC<ClaimMenuProps> = ({ options, selectedIndex, onSelect, onConfirm }) => (
-  <div style={styles.claimMenu}>
-    {options.map((opt, i) => (
-      <button
-        key={i}
-        style={{
-          ...styles.claimButton,
-          background: i === selectedIndex ? '#ddf' : '#fff',
-          borderColor: i === selectedIndex ? '#66f' : '#aaa',
-        }}
-        onClick={() => { onSelect(i); onConfirm(opt); }}
-        onMouseEnter={() => onSelect(i)}
-      >
-        {claimLabel(opt)} {opt.tiles.map(t => formatTile(t)).join('')}
-      </button>
+const HandView: React.FC<HandViewProps> = ({ tiles, selectedIndex, tileSize }) => (
+  <div style={{ display: 'flex', gap: 1 }}>
+    {tiles.map((tile, i) => (
+      <TileSVG
+        key={`${tile.suit}:${tile.value}:${tile.red ?? false}:${i}`}
+        tile={tile}
+        size={tileSize}
+        selected={i === selectedIndex}
+      />
     ))}
   </div>
 );
 
-// ── Discard river ──
+
 
 interface DiscardRiverProps {
   discards: readonly { tile: Tile; isRiichi: boolean }[];
   tileSize: number;
 }
 
-const DiscardRiver: React.FC<DiscardRiverProps> = ({ discards, tileSize }) => {
-  if (discards.length === 0) return <span style={{ color: '#bbb' }}>--</span>;
-  return (
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-      {discards.map((d, i) => (
-        <span key={i} style={{ opacity: d.isRiichi ? 0.6 : 1 }}>
-          <TileSVG tile={d.tile} size={tileSize * 0.7} />
-        </span>
-      ))}
-    </div>
-  );
-};
 
-// ── Main App ──
+const DiscardRiver: React.FC<DiscardRiverProps> = ({ discards, tileSize }) => (
+  <div style={{
+    display: 'flex',
+    flexWrap: 'wrap',
+    gap: 1,
+    padding: 4,
+    background: '#3a7a3a',
+    borderRadius: 4,
+    minHeight: tileSize * 1.4,
+    minWidth: 60,
+  }}>
+    {discards.length === 0 ? (
+      <span style={{ color: '#5a9a5a', fontSize: 11, padding: 2 }}>--</span>
+    ) : (
+      discards.map((d, i) => (
+        <TileSVG
+          key={i}
+          tile={d.tile}
+          size={tileSize}
+          selected={d.isRiichi}
+        />
+      ))
+    )}
+  </div>
+);
+// ── Main Board ──
 
 export const Board: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
-  const [tileSize, setTileSize] = useState(52);
+  const [tileSize, setTileSize] = useState(46);
   const processingRef = useRef(false);
 
   // AI turn processing
@@ -316,6 +151,11 @@ export const Board: React.FC = () => {
         return;
       }
 
+      // Suppress arrow/page scroll
+      if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', ' '].includes(e.key)) {
+        e.preventDefault();
+      }
+
       if (state.phase === 'claiming') {
         const humanOptions = state.claimOptions.filter(c => c.player === 0);
         if (humanOptions.length === 0) return;
@@ -375,10 +215,7 @@ export const Board: React.FC = () => {
 
       // Playing phase
       if (state.currentPlayer !== 0) return;
-      if (state.players[0].riichi) {
-        // Riichi forced discard handled by selector
-        return;
-      }
+      if (state.players[0].riichi) return;
 
       if (e.key === 'ArrowLeft') {
         setSelectedIndex(prev => hand.length > 0 ? (prev - 1 + hand.length) % hand.length : 0);
@@ -418,44 +255,85 @@ export const Board: React.FC = () => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [state, selectedIndex, claimSelectedIndex, hand, drawnIndex, showDrawnSeparate]);
+  }, [state, selectedIndex, claimSelectedIndex, hand]);
 
-  // ── Render ──
+  // ── Render helpers ──
+
+  const s = tileSize;
+
+  const renderOpponentRiver = (discards: readonly { tile: Tile; isRiichi: boolean }[]) => (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 1, padding: 3 }}>
+      {discards.length === 0 ? (
+        <span style={{ color: '#5a9a5a', fontSize: 10 }}>--</span>
+      ) : (
+        discards.slice(-12).map((d, i) => (
+          <TileSVG key={i} tile={d.tile} size={Math.round(s * 0.55)} selected={d.isRiichi} />
+        ))
+      )}
+    </div>
+  );
+
+  const renderMeldSet = (melds: readonly { tiles: readonly Tile[] }[], sz: number) => (
+    <div style={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+      {melds.map((meld, i) => (
+        <div key={i} style={{ display: 'flex', gap: 0.5 }}>
+          {meld.tiles.map((tile, j) => (
+            <TileSVG key={j} tile={tile} size={sz} />
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+
+  // ── Screen state ──
 
   if (state.phase === 'ended' || state.phase === 'roundEnded') {
     const sr = state.lastScoreResult;
     return (
-      <div style={styles.container}>
-        <div style={styles.header}>{state.message}</div>
-        <div style={{ textAlign: 'center', fontSize: 14, color: '#555' }}>
+      <div style={{
+        background: greenGrad,
+        minHeight: '100vh',
+        color: '#fff',
+        fontFamily: 'serif',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 24,
+      }}>
+        <div style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>{state.message}</div>
+        <div style={{ fontSize: 14, color: '#ccc', marginBottom: 16 }}>
           {state.phase === 'roundEnded'
             ? `次局: ${roundName(state.roundNumber, state.roundWind)} / 親: P${state.dealer + 1} / 本場: ${state.honba}`
             : '対戦終了'}
         </div>
-        <DoraView state={state} tileSize={tileSize} />
         {sr && (
-          <div style={styles.section}>
-            <div><strong>スコア</strong></div>
-            <div style={styles.infoText}>役: {sr.yaku.map(y => y.name).join('・')}</div>
-            <div style={styles.infoText}>飜: {sr.han} / 符: {sr.fu}</div>
-            <div style={styles.infoText}>
-              支払い: {sr.payment.from.map(f => `P${f.player + 1}: ${f.amount}点`).join(', ')}
-            </div>
-            <div style={{ fontWeight: 'bold', color: '#cc0', fontSize: 16 }}>
-              獲得: {sr.score}点
-            </div>
+          <div style={{
+            background: 'rgba(0,0,0,0.3)',
+            borderRadius: 8,
+            padding: '12px 24px',
+            marginBottom: 16,
+          }}>
+            <div style={{ fontWeight: 'bold' }}>スコア</div>
+            <div>役: {sr.yaku.map(y => y.name).join('・')}</div>
+            <div>飜: {sr.han} / 符: {sr.fu}</div>
+            <div>獲得: {sr.score}点</div>
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 16 }}>
           {([0, 1, 2, 3] as const).map(i => (
-            <div key={i} style={styles.section}>
+            <div key={i} style={{
+              background: 'rgba(0,0,0,0.3)',
+              borderRadius: 6,
+              padding: '6px 14px',
+            }}>
               <strong>{i === 0 ? 'あなた' : `P${i + 1}`}</strong>
-              <span style={styles.infoText}> ({state.players[i].points}点)</span>
+              <span style={{ marginLeft: 8 }}>{state.players[i].points}点</span>
             </div>
           ))}
         </div>
-        <div style={{ textAlign: 'center', marginTop: 16, fontSize: 14, color: '#888' }}>
-          {state.phase === 'roundEnded' ? 'Enter / Space / N: 次局へ' : 'Space: もう一度遊ぶ'}
+        <div style={{ marginTop: 24, fontSize: 14, color: '#aaa' }}>
+          {state.phase === 'roundEnded' ? 'Enter / Space: 次局へ' : 'Space: もう一度遊ぶ'}
         </div>
       </div>
     );
@@ -467,111 +345,203 @@ export const Board: React.FC = () => {
   const humanShanten = state.phase === 'playing' && state.currentPlayer === 0
     ? calcShanten(humanAllTiles)
     : -1;
+  const doraIndicators = getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount);
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      background: greenGrad,
+      minHeight: '100vh',
+      fontFamily: 'serif',
+      display: 'flex',
+      flexDirection: 'column',
+      padding: '6px 8px',
+      color: '#fff',
+      userSelect: 'none',
+    }}>
       {/* Tile size slider */}
-      <div style={{ textAlign: 'right', marginBottom: 4 }}>
-        <label style={{ fontSize: 12, color: '#888' }}>
-          牌サイズ:
+      <div style={{ position: 'fixed', top: 4, right: 8, zIndex: 10 }}>
+        <label style={{ fontSize: 11, color: '#8aba8a' }}>
+          牌:
           <input
             type="range"
             min={32}
-            max={80}
+            max={72}
             value={tileSize}
             onChange={e => setTileSize(Number(e.target.value))}
-            style={{ verticalAlign: 'middle', marginLeft: 4 }}
+            style={{ verticalAlign: 'middle', margin: '0 4px' }}
           />
-          <span style={{ marginLeft: 4 }}>{tileSize}</span>
         </label>
       </div>
 
-      {/* Header */}
-      <div style={styles.header}>
-        {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba} / 供託: {state.riichiSticks}
+      {/* ═══ OPPONENT ROW ═══ */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-around',
+        alignItems: 'flex-start',
+        gap: 4,
+        marginBottom: 6,
+      }}>
+        {([3, 2, 1] as const).map((idx) => {
+          const p = state.players[idx];
+          const labels = ['あなた', '下家', '対面', '上家'];
+          return (
+            <div key={idx} style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              background: 'rgba(0,0,0,0.18)',
+              borderRadius: 6,
+              padding: '4px 8px',
+              flex: 1,
+              maxWidth: 240,
+            }}>
+              {/* Name + Points */}
+              <div style={{ fontSize: 13, fontWeight: 'bold', color: '#ffd700' }}>
+                {WIND_NAMES[p.wind]}家
+                <span style={{ color: '#ccc', fontWeight: 'normal', marginLeft: 6 }}>
+                  {labels[idx]} {p.riichi && '⚡'}
+                </span>
+              </div>
+              <div style={{ fontSize: 15, color: '#fff', fontWeight: 'bold' }}>{p.points}点</div>
+              {/* Tile backs */}
+              <div style={{ display: 'flex', gap: 0.5 }}>
+                {Array.from({ length: Math.min(p.hand.length, 13) }).map((_, i) => (
+                  <TileBack key={i} size={Math.round(s * 0.45)} />
+                ))}
+              </div>
+              {/* Melds */}
+              {p.melds.length > 0 && (
+                <div style={{ marginTop: 2 }}>
+                  {renderMeldSet(p.melds, Math.round(s * 0.35))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
 
-      <hr style={styles.divider} />
-
-      {/* Dora */}
-      <DoraView state={state} tileSize={tileSize} />
-
-      {/* Opponents */}
-      <div style={styles.opponentRow}>
-        <OpponentInfo
-          label={`上家 (${WIND_NAMES[state.players[3].wind]}家)`}
-          tileCount={state.players[3].hand.length}
-          points={state.players[3].points}
-          riichi={state.players[3].riichi}
-        />
-        <OpponentInfo
-          label={`対面 (${WIND_NAMES[state.players[2].wind]}家)`}
-          tileCount={state.players[2].hand.length}
-          points={state.players[2].points}
-          riichi={state.players[2].riichi}
-        />
-        <OpponentInfo
-          label={`下家 (${WIND_NAMES[state.players[1].wind]}家)`}
-          tileCount={state.players[1].hand.length}
-          points={state.players[1].points}
-          riichi={state.players[1].riichi}
-        />
-      </div>
-
-      {/* Last discard */}
-      <div style={{ textAlign: 'center', marginBottom: 4 }}>
-        <span style={{ fontWeight: 'bold', fontSize: 13 }}>捨て牌: </span>
-        {state.lastDiscard ? (
-          <TileSVG tile={state.lastDiscard.tile} size={tileSize * 0.8} />
-        ) : (
-          <span style={{ color: '#bbb', fontSize: 13 }}>--</span>
-        )}
-      </div>
-
-      <hr style={styles.divider} />
-
-      {/* Player area */}
-      <div style={styles.playerArea}>
-        <div style={{ fontWeight: 'bold', fontSize: 14 }}>
-          {WIND_NAMES[state.players[0].wind]}家 (あなた) ({state.players[0].points}点)
-          {state.players[0].riichi && <span style={{ color: '#cc0', marginLeft: 8 }}>リーチ中</span>}
+      {/* ═══ CENTER: Log / Dora / Last discard ═══ */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 16,
+        padding: '3px 0',
+        marginBottom: 4,
+      }}>
+        {/* Dora indicators */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#8aba8a', fontWeight: 'bold' }}>ドラ:</span>
+          {doraIndicators.length > 0 ? (
+            doraIndicators.map((tile, i) => (
+              <TileSVG key={`dora-${i}`} tile={tile} size={Math.round(s * 0.55)} />
+            ))
+          ) : (
+            <span style={{ color: '#5a9a5a', fontSize: 11 }}>--</span>
+          )}
         </div>
 
-        {/* Discards */}
-        <div style={styles.section}>
-          <div style={{ fontWeight: 'bold', fontSize: 12 }}>あなたの捨て牌:</div>
-          <DiscardRiver discards={state.players[0].discards} tileSize={tileSize} />
+        {/* Last discard */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <span style={{ fontSize: 12, color: '#8aba8a', fontWeight: 'bold' }}>最後の捨て牌:</span>
+          {state.lastDiscard ? (
+            <TileSVG tile={state.lastDiscard.tile} size={Math.round(s * 0.65)} selected />
+          ) : (
+            <span style={{ color: '#5a9a5a', fontSize: 11 }}>--</span>
+          )}
+        </div>
+      </div>
+
+      {/* ═══ OPPONENT DISCARD RIVERS ═══ */}
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-around',
+        gap: 8,
+        marginBottom: 6,
+      }}>
+        <div style={{
+          background: 'rgba(0,0,0,0.1)',
+          borderRadius: 4,
+          padding: 3,
+          flex: 1,
+          maxWidth: 240,
+        }}>
+          <div style={{ fontSize: 9, color: '#8aba8a', marginBottom: 2 }}>上家の河</div>
+          {renderOpponentRiver(state.players[3].discards)}
+        </div>
+        <div style={{
+          background: 'rgba(0,0,0,0.1)',
+          borderRadius: 4,
+          padding: 3,
+          flex: 1,
+          maxWidth: 240,
+        }}>
+          <div style={{ fontSize: 9, color: '#8aba8a', marginBottom: 2 }}>対面の河</div>
+          {renderOpponentRiver(state.players[2].discards)}
+        </div>
+        <div style={{
+          background: 'rgba(0,0,0,0.1)',
+          borderRadius: 4,
+          padding: 3,
+          flex: 1,
+          maxWidth: 240,
+        }}>
+          <div style={{ fontSize: 9, color: '#8aba8a', marginBottom: 2 }}>下家の河</div>
+          {renderOpponentRiver(state.players[1].discards)}
+        </div>
+      </div>
+
+      {/* ═══ PLAYER SECTION ═══ */}
+      <div style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 3,
+        marginTop: 'auto',
+        background: 'rgba(0,0,0,0.15)',
+        borderRadius: 8,
+        padding: '6px 8px',
+      }}>
+        {/* Wind, points, riichi, shanten */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 14 }}>
+          <span style={{ fontWeight: 'bold', color: '#ffd700' }}>
+            {WIND_NAMES[state.players[0].wind]}家 (あなた)
+          </span>
+          <span style={{ color: '#fff', fontWeight: 'bold' }}>{state.players[0].points}点</span>
+          {state.players[0].riichi && <span style={{ color: '#ff4444', fontWeight: 'bold' }}>リーチ中</span>}
+          {humanShanten >= 0 && (
+            <span style={{ color: '#8aba8a', fontSize: 12 }}>
+              シャンテン: {humanShanten}
+            </span>
+          )}
         </div>
 
         {/* Melds */}
         {state.players[0].melds.length > 0 && (
-          <div style={styles.section}>
-            <div style={{ fontWeight: 'bold', fontSize: 12 }}>副露:</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              {state.players[0].melds.map((meld, i) => (
-                <div key={i} style={{ display: 'flex', gap: 1, border: '1px solid #aaa', borderRadius: 4, padding: '2px 4px' }}>
-                  {meld.tiles.map((tile, j) => (
-                    <TileSVG key={j} tile={tile} size={tileSize * 0.6} />
-                  ))}
-                </div>
-              ))}
-            </div>
+          <div style={{ marginTop: 2 }}>
+            {renderMeldSet(state.players[0].melds, Math.round(s * 0.55))}
           </div>
         )}
 
+        {/* Player discards */}
+        <div style={{ width: '100%', maxWidth: 700 }}>
+          <div style={{ fontSize: 11, color: '#8aba8a', marginBottom: 2 }}>あなたの河</div>
+          <DiscardRiver discards={state.players[0].discards} tileSize={Math.round(s * 0.55)} />
+        </div>
+
         {/* Hand */}
-        <div style={styles.handRow}>
+        <div style={{ display: 'flex', gap: 0, marginTop: 4 }}>
           {showDrawnSeparate ? (
             <>
               <HandView
                 tiles={hand.filter((_, i) => i !== drawnIndex)}
                 selectedIndex={selectedIndex === drawnIndex ? -1 : selectedIndex > drawnIndex ? selectedIndex - 1 : selectedIndex}
-                isHuman={true}
-                tileSize={tileSize}
+                tileSize={s}
               />
               <TileSVG
                 tile={state.lastDrawnTile!}
-                size={tileSize}
+                size={s}
                 selected={selectedIndex === drawnIndex}
                 isDrawn
               />
@@ -580,53 +550,86 @@ export const Board: React.FC = () => {
             <HandView
               tiles={hand}
               selectedIndex={selectedIndex}
-              isHuman={true}
-              tileSize={tileSize}
+              tileSize={s}
             />
           )}
         </div>
 
-        {/* Shanten */}
-        {humanShanten >= 0 && (
-          <div style={styles.shanten}>シャンテン数: {humanShanten}</div>
-        )}
-
         {/* Turn info */}
-        <div style={{ fontSize: 12, color: '#888', marginTop: 4 }}>
+        <div style={{ fontSize: 11, color: '#8aba8a' }}>
           残り牌: {state.wall.length} / 王牌: {state.deadWall.tiles.length}枚 / リーチ棒: {state.riichiSticks}
         </div>
 
         {/* Claim menu */}
         {isClaiming && humanOptions.length > 0 && (
-          <ClaimMenu
-            options={humanOptions}
-            selectedIndex={claimSelectedIndex}
-            onSelect={setClaimSelectedIndex}
-            onConfirm={(opt) => {
-              switch (opt.type) {
-                case 'ron': dispatch({ type: 'RON', winner: 0 }); break;
-                case 'chi': dispatch({ type: 'CHI', player: 0, optionIndex: state.claimOptions.indexOf(opt) }); break;
-                case 'pon': dispatch({ type: 'PON', player: 0 }); break;
-                case 'daiminkan': dispatch({ type: 'DAIMINKAN', player: 0 }); break;
-              }
-            }}
-          />
+          <div style={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            justifyContent: 'center',
+            gap: 6,
+            marginTop: 6,
+          }}>
+            {humanOptions.map((opt, i) => (
+              <button
+                key={i}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: 6,
+                  border: i === claimSelectedIndex ? '2px solid #ff8800' : '1px solid #888',
+                  background: i === claimSelectedIndex ? 'rgba(255,136,0,0.2)' : 'rgba(255,255,255,0.1)',
+                  color: '#fff',
+                  fontSize: 14,
+                  cursor: 'pointer',
+                  fontFamily: 'serif',
+                }}
+                onClick={() => {
+                  setClaimSelectedIndex(i);
+                  switch (opt.type) {
+                    case 'ron': dispatch({ type: 'RON', winner: 0 }); break;
+                    case 'chi': dispatch({ type: 'CHI', player: 0, optionIndex: state.claimOptions.indexOf(opt) }); break;
+                    case 'pon': dispatch({ type: 'PON', player: 0 }); break;
+                    case 'daiminkan': dispatch({ type: 'DAIMINKAN', player: 0 }); break;
+                  }
+                }}
+              >
+                {claimLabel(opt)} {opt.tiles.map(t => formatTile(t)).join('')}
+              </button>
+            ))}
+          </div>
         )}
 
-        {/* Action bar */}
+        {/* Action buttons */}
         {state.phase === 'playing' && state.currentPlayer === 0 && !state.players[0].riichi && (
-          <div style={styles.actionBar}>
+          <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
             {(turnTileCount(state.players[0]) === 14) && (
-              <button style={styles.actionButton} onClick={() => dispatch({ type: 'TSUMO', player: 0 })}>
-                ツモ (T)
+              <button style={{
+                padding: '4px 14px',
+                borderRadius: 4,
+                border: '1px solid #228833',
+                background: 'rgba(34,136,51,0.2)',
+                color: '#88dd88',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontFamily: 'serif',
+              }} onClick={() => dispatch({ type: 'TSUMO', player: 0 })}>
+                T: ツモ
               </button>
             )}
             {(!state.players[0].riichi && state.players[0].points >= 1000 &&
               state.players[0].melds.every(m => m.type === 'closedKan')) && (
-              <button style={styles.actionButton}
+              <button style={{
+                padding: '4px 14px',
+                borderRadius: 4,
+                border: '1px solid #886622',
+                background: 'rgba(136,102,34,0.2)',
+                color: '#ddbb66',
+                cursor: 'pointer',
+                fontSize: 13,
+                fontFamily: 'serif',
+              }}
                 onClick={() => dispatch({ type: 'DECLARE_RIICHI', player: 0, discardTile: hand[selectedIndex]! })}
               >
-                リーチ (R)
+                R: リーチ
               </button>
             )}
           </div>
@@ -634,12 +637,21 @@ export const Board: React.FC = () => {
 
         {/* Message */}
         {state.message && (
-          <div style={styles.message}>{state.message}</div>
+          <div style={{
+            fontSize: 16,
+            fontWeight: 'bold',
+            color: '#ffdd88',
+            textAlign: 'center',
+            marginTop: 4,
+          }}>
+            {state.message}
+          </div>
         )}
 
         {/* Key legend */}
-        <div style={{ textAlign: 'center', fontSize: 12, color: '#aaa', marginTop: 8 }}>
-          ←→:選択 Enter:打牌 T:ツモ R:リーチ 数字キー:直接選択
+        <div style={{ fontSize: 11, color: '#6a9a6a', textAlign: 'center', marginTop: 4 }}>
+          ←→: 選択 &nbsp; Enter: 打牌 &nbsp; T: ツモ &nbsp; R: リーチ &nbsp; 1-9: 直接選択
+          {isClaiming && ' | L:ロン C:チー P:ポン K:カン Space:パス'}
         </div>
       </div>
     </div>
