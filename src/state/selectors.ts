@@ -1,5 +1,6 @@
 import {
   canDeclareKyuushuKyuuhai,
+  canDeclareRiichi,
   findWaits,
   removeOneTile,
   tileKindKey,
@@ -9,21 +10,30 @@ import type { GameState } from "./GameState.js";
 import type { Tile } from "../game/types.js";
 import { MeldType, type Meld } from "../game/types.js";
 import { indexToTile } from "../game/agari.js";
+import { canScoreTsumo } from "./finishRound.js";
 
 export function getHumanHand(state: GameState): readonly Tile[] {
   return state.players[0].hand;
 }
 
 export function canHumanTsumo(state: GameState): boolean {
-  return (
-    state.phase === "playing" && state.currentPlayer === 0 && turnTileCount(state.players[0]) === 14
-  );
+  if (state.phase !== "playing" || state.currentPlayer !== 0) return false;
+  if (turnTileCount(state.players[0]) !== 14) return false;
+  const winTile = state.lastDrawnTile ?? state.players[0].hand[state.players[0].hand.length - 1]!;
+  return canScoreTsumo(state, 0, winTile);
 }
 
 export function canHumanRiichi(state: GameState): boolean {
   if (state.phase !== "playing" || state.currentPlayer !== 0) return false;
   const p = state.players[0];
-  return !p.riichi && p.points >= 1000;
+  if (p.riichi || p.points < 1000) return false;
+  if (!canDeclareRiichi(p)) return false;
+  const hand = p.hand;
+  for (let i = 0; i < hand.length; i++) {
+    const testHand = removeOneTile(hand, hand[i]!);
+    if (findWaits(testHand, p.melds).length > 0) return true;
+  }
+  return false;
 }
 
 export function canHumanAnkan(state: GameState, selectedIndex: number): boolean {

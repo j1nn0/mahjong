@@ -27,6 +27,15 @@ function s(v: number, r?: boolean): Tile {
 function ton(): Tile {
   return { suit: Suit.Wind, value: Wind.Ton, red: false };
 }
+function nan(): Tile {
+  return { suit: Suit.Wind, value: Wind.Nan, red: false };
+}
+function sha(): Tile {
+  return { suit: Suit.Wind, value: Wind.Sha, red: false };
+}
+function pei(): Tile {
+  return { suit: Suit.Wind, value: Wind.Pei, red: false };
+}
 
 // ── State factory helpers ──────────────────────────────────────────
 
@@ -104,25 +113,12 @@ describe("getHumanHand", () => {
 // ── Test: canHumanTsumo ─────────────────────────────────────────────
 
 describe("canHumanTsumo", () => {
-  it("returns true when phase=playing, currentPlayer=0, turnTileCount=14", () => {
-    const hand = [
-      m(1),
-      m(2),
-      m(3),
-      m(4),
-      m(5),
-      m(6),
-      m(7),
-      m(8),
-      m(9),
-      p(1),
-      p(2),
-      p(3),
-      p(4),
-      p(5),
-    ];
+  it("returns true when phase=playing, currentPlayer=0, turnTileCount=14, and hand is winning", () => {
+    // Tanyao: all 2-8 tiles, forms 4 sequences + pair (m8)
+    // (m2,m3,m4)(m5,m6,m7)(p2,p3,p4)(s5,s6,s7) + (m8,m8)
+    const hand = [m(2), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(5), s(6), s(7), m(8), m(8)];
     const melds: Meld[] = [];
-    const state = makePlayState({ hand, melds });
+    const state = makePlayState({ hand, melds }, { lastDrawnTile: m(8) });
     expect(turnTileCount(state.players[0])).toBe(14);
     expect(canHumanTsumo(state)).toBe(true);
   });
@@ -153,13 +149,24 @@ describe("canHumanTsumo", () => {
     expect(turnTileCount(state.players[0])).toBe(13);
     expect(canHumanTsumo(state)).toBe(false);
   });
+  it("returns false when hand is 14 tiles but not a winning hand", () => {
+    // 12 terminal/honor kinds + 2 middle tiles = no kokushi, no standard hand
+    const hand = [m(1), m(9), p(1), p(9), s(1), s(9), ton(), nan(), sha(), pei(), m(1), m(2), s(2), m(3)];
+    const state = makePlayState({ hand, melds: [] }, { lastDrawnTile: m(3) });
+    expect(turnTileCount(state.players[0])).toBe(14);
+    expect(canHumanTsumo(state)).toBe(false);
+  });
 });
+
+
 
 // ── Test: canHumanRiichi ─────────────────────────────────────────
 
 describe("canHumanRiichi", () => {
-  it("returns true when phase=playing, currentPlayer=0, not riichi, points>=1000", () => {
-    const state = makePlayState({ points: 25000, riichi: false });
+  it("returns true when phase=playing, currentPlayer=0, not riichi, points>=1000, closed hand, and tenpai", () => {
+    // 14 tiles: discarding ton leaves (m1,m2,m3)(m4,m5,m6)(p1,p2,p3)(s1,s2,s3)+ton → tanki wait for ton
+    const hand = [m(1), m(2), m(3), m(4), m(5), m(6), p(1), p(2), p(3), s(1), s(2), s(3), ton(), ton()];
+    const state = makePlayState({ hand, melds: [], riichi: false, points: 25000 });
     expect(canHumanRiichi(state)).toBe(true);
   });
 
@@ -177,9 +184,17 @@ describe("canHumanRiichi", () => {
     const state = makePlayState({ riichi: false, points: 25000 }, { phase: "claiming" });
     expect(canHumanRiichi(state)).toBe(false);
   });
+  it("returns false when player has open melds", () => {
+    const hand = [m(1), m(2), m(3), m(4), m(5), m(6), p(1), p(2), p(3), s(1), s(2), s(3), ton(), ton()];
+    const melds: Meld[] = [{ type: MeldType.Poon, tiles: [nan(), nan(), nan()] }];
+    const state = makePlayState({ hand, melds, riichi: false, points: 25000 });
+    expect(canHumanRiichi(state)).toBe(false);
+  });
 
-  it("returns false when currentPlayer is not 0", () => {
-    const state = makePlayState({ riichi: false, points: 25000 }, { currentPlayer: 2 });
+  it("returns false when no discard leads to tenpai", () => {
+    // Truly non-tenpai: 5 honors + 9 gapped numbers from 3 suits
+    const hand = [m(1), m(4), m(7), p(2), p(5), p(8), s(3), s(6), s(9), ton(), nan(), sha(), pei(), m(2)];
+    const state = makePlayState({ hand, melds: [], riichi: false, points: 25000 });
     expect(canHumanRiichi(state)).toBe(false);
   });
 });

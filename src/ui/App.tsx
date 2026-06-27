@@ -561,13 +561,12 @@ const App: React.FC = () => {
       return;
     }
 
-    if (input === "k") {
-      if (hand.length === 0) return;
+    if (input === "k" && humanCanKan) {
       dispatch({ type: humanCanKakan ? "KAKAN" : "ANKAN", player: 0, tile: hand[selectedIndex]! });
       return;
     }
 
-    if (input === "t") {
+    if (input === "t" && humanCanTsumo) {
       dispatch({ type: "TSUMO", player: 0 });
       return;
     }
