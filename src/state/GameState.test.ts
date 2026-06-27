@@ -3262,3 +3262,63 @@ describe("riichi turn flow edge cases", () => {
     expect(afterKan.message).toContain("暗槓できません");
   });
 });
+
+describe("double/triple ron edge cases", () => {
+  it("rejects RON when lastDiscard is null", () => {
+    const state = startedState({ lastDiscard: null });
+    const after = gameReducer(state, { type: "RON", winner: 0 });
+    expect(after.message).toContain("ロンできません");
+    expect(after.phase).toBe("playing");
+  });
+
+  it("distributes double ron payments correctly with honba", () => {
+    // P0 and P2 both ron P1's discard with honba=2
+    const players = makePlayers(
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([p(5)]),
+      makeTestPlayer(winningTanyao13()),
+      makeTestPlayer([]),
+    );
+    const state = startedState({
+      dealer: 0,
+      phase: "claiming",
+      currentPlayer: 1,
+      honba: 2,
+      players,
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: sortClaimsByPriority(collectClaims(p(5), 1, players), 1),
+    });
+    const beforeTotal = pointsTotal(state);
+    const afterRon = gameReducer(state, { type: "RON", winner: 0 });
+    expect(afterRon.phase).toBe("roundEnded");
+    expect(pointsTotal(afterRon)).toBe(beforeTotal);
+  });
+
+  it("rejects RON when the ronning hand has no valid yaku", () => {
+    // P1 has open meld (pon 222m) + 345m(seq) + 789m(seq) + 234p(seq) + 55p(pair)
+    // 789m has terminal 9m → no tanyao. 222m is not terminal → no chanta.
+    // Open, all sequences + pair, mixes suits → 0 yaku
+    const meld: Meld = { type: MeldType.Poon, tiles: [m(2), m(2), m(2)], calledTile: m(2) };
+    const closed10 = [m(3), m(4), m(5), m(7), m(8), m(9), p(2), p(3), p(4), p(5)];
+    const players = makePlayers(
+      makeTestPlayer([m(5), m(5), m(5), p(5)]),
+      { ...makeTestPlayer(closed10), melds: [meld] },
+      makeTestPlayer([]),
+      makeTestPlayer([]),
+    );
+    const afterRon = gameReducer(
+      {
+        ...startedState(),
+        phase: "claiming",
+        currentPlayer: 0,
+        players,
+        lastDiscard: { tile: p(5), player: 0 },
+        claimOptions: [],
+      },
+      { type: "RON", winner: 1 },
+    );
+    // RON is rejected: stays in claiming phase with error message
+    expect(afterRon.phase).toBe("claiming");
+    expect(afterRon.message).toContain("スコア計算できません");
+  });
+});
