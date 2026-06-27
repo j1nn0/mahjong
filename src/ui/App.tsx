@@ -417,6 +417,8 @@ const App: React.FC = () => {
   }, [state, startupMode]);
 
   const hand = getHumanHand(state);
+  const drawnIndex = state.lastDrawnTile != null ? hand.indexOf(state.lastDrawnTile) : -1;
+  const showDrawnSeparate = drawnIndex >= 0 && hand.length === 14;
   const humanCanTsumo = canHumanTsumo(state);
   const humanCanRiichi = canHumanRiichi(state);
   const humanCanKakan = canHumanKakan(state, selectedIndex);
@@ -780,12 +782,29 @@ const App: React.FC = () => {
                 <MeldView melds={state.players[0].melds} />
               </Box>
             )}
-            <HandView
-              tiles={hand}
-              selectedIndex={selectedIndex}
-              riichi={state.players[0].riichi}
-              isHuman={true}
-            />
+            {showDrawnSeparate ? (
+              <Box>
+                <HandView
+                  tiles={hand.filter((_, i) => i !== drawnIndex)}
+                  selectedIndex={selectedIndex > drawnIndex ? selectedIndex - 1 : selectedIndex}
+                  riichi={state.players[0].riichi}
+                  isHuman={true}
+                />
+                <Box width={4}><Text> </Text></Box>
+                <Box width={3}>
+                  <Text color={tileColor(state.lastDrawnTile!)} bold>
+                    {formatTile(state.lastDrawnTile!)}
+                  </Text>
+                </Box>
+              </Box>
+            ) : (
+              <HandView
+                tiles={hand}
+                selectedIndex={selectedIndex}
+                riichi={state.players[0].riichi}
+                isHuman={true}
+              />
+            )}
             <TurnInfo wallRemaining={state.wall.length} deadWallRemaining={state.deadWall.tiles.length} riichiSticks={state.riichiSticks} />
             {state.currentPlayer === 0 && state.phase === "claiming" && (
               <Box>
@@ -899,12 +918,29 @@ const App: React.FC = () => {
               <MeldView melds={state.players[0].melds} />
             </Box>
           )}
-          <HandView
-            tiles={hand}
-            selectedIndex={selectedIndex}
-            riichi={state.players[0].riichi}
-            isHuman={true}
-          />
+          {showDrawnSeparate ? (
+            <Box>
+              <HandView
+                tiles={hand.filter((_, i) => i !== drawnIndex)}
+                selectedIndex={selectedIndex > drawnIndex ? selectedIndex - 1 : selectedIndex}
+                riichi={state.players[0].riichi}
+                isHuman={true}
+              />
+              <Box width={4}><Text> </Text></Box>
+              <Box width={3}>
+                <Text color={tileColor(state.lastDrawnTile!)} bold>
+                  {formatTile(state.lastDrawnTile!)}
+                </Text>
+              </Box>
+            </Box>
+          ) : (
+            <HandView
+              tiles={hand}
+              selectedIndex={selectedIndex}
+              riichi={state.players[0].riichi}
+              isHuman={true}
+            />
+          )}
           <TurnInfo wallRemaining={state.wall.length} deadWallRemaining={state.deadWall.tiles.length} riichiSticks={state.riichiSticks} />
           <ActionBar
             canTsumo={humanCanTsumo}
