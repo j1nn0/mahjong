@@ -786,12 +786,12 @@ const App: React.FC = () => {
               <Box>
                 <HandView
                   tiles={hand.filter((_, i) => i !== drawnIndex)}
-                  selectedIndex={selectedIndex > drawnIndex ? selectedIndex - 1 : selectedIndex}
+                  selectedIndex={selectedIndex === drawnIndex ? -1 : selectedIndex > drawnIndex ? selectedIndex - 1 : selectedIndex}
                   riichi={state.players[0].riichi}
                   isHuman={true}
                 />
                 <Box width={3}>
-                  <Text> <Text color={tileColor(state.lastDrawnTile!)} bold>{formatTile(state.lastDrawnTile!)}</Text></Text>
+                  <Text> <Text color={tileColor(state.lastDrawnTile!)} bold underline={selectedIndex === drawnIndex}>{formatTile(state.lastDrawnTile!)}</Text></Text>
                 </Box>
               </Box>
             ) : (
@@ -919,12 +919,12 @@ const App: React.FC = () => {
             <Box>
               <HandView
                 tiles={hand.filter((_, i) => i !== drawnIndex)}
-                selectedIndex={selectedIndex > drawnIndex ? selectedIndex - 1 : selectedIndex}
+                selectedIndex={selectedIndex === drawnIndex ? -1 : selectedIndex > drawnIndex ? selectedIndex - 1 : selectedIndex}
                 riichi={state.players[0].riichi}
                 isHuman={true}
               />
               <Box width={3}>
-                <Text> <Text color={tileColor(state.lastDrawnTile!)} bold>{formatTile(state.lastDrawnTile!)}</Text></Text>
+                <Text> <Text color={tileColor(state.lastDrawnTile!)} bold underline={selectedIndex === drawnIndex}>{formatTile(state.lastDrawnTile!)}</Text></Text>
               </Box>
             </Box>
           ) : (
