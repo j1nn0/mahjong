@@ -691,17 +691,21 @@ const App: React.FC = () => {
     );
   }
 
+  const dividerWidth = Math.max(20, Math.min((terminalWidth ?? 80) - 4, 80));
+
   // Claiming screen
   if (state.phase === "claiming") {
     const humanOptions = state.claimOptions.filter((c) => c.player === 0);
     return (
       <Box width={terminalWidth}>
         <Box flexDirection="column" padding={1} width="100%">
-          <Text bold>
-            {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
-          </Text>
-          <DoraView state={state} />
-          <Text dimColor>{"─".repeat(40)}</Text>
+          <Box alignItems="center" flexDirection="column" width="100%">
+            <Text bold>
+              {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
+            </Text>
+            <DoraView state={state} />
+          </Box>
+          <Text dimColor>{"─".repeat(dividerWidth)}</Text>
           {/* 対面 (across) - top center */}
           <Box width="100%">
             <OpponentInfo
@@ -743,20 +747,20 @@ const App: React.FC = () => {
               />
             </Box>
           </Box>
-          <Text dimColor>{"─".repeat(40)}</Text>
-          <Box marginTop={1} marginBottom={1}>
-            <Text bold>捨て牌: </Text>
-            {state.lastDiscard ? (
-              <Text color={tileColor(state.lastDiscard.tile)}>
-                {formatTile(state.lastDiscard.tile)}
-              </Text>
-            ) : (
-              <Text dimColor>まだありません</Text>
-            )}
-          </Box>
-          <TurnLogView entries={turnLogRef.current} />
-          <Text dimColor>{"─".repeat(40)}</Text>
           <Box alignItems="center" flexDirection="column" width="100%">
+            <Text dimColor>{"─".repeat(dividerWidth)}</Text>
+            <Box marginTop={1} marginBottom={1}>
+              <Text bold>捨て牌: </Text>
+              {state.lastDiscard ? (
+                <Text color={tileColor(state.lastDiscard.tile)}>
+                  {formatTile(state.lastDiscard.tile)}
+                </Text>
+              ) : (
+                <Text dimColor>まだありません</Text>
+              )}
+            </Box>
+            <TurnLogView entries={turnLogRef.current} />
+            <Text dimColor>{"─".repeat(dividerWidth)}</Text>
             <Box marginTop={1} marginBottom={1}>
               <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
               <Text dimColor>({state.players[0].points}点) </Text>
@@ -797,19 +801,27 @@ const App: React.FC = () => {
               <ClaimMenu options={humanOptions} selectedIndex={claimSelectedIndex} />
             )}
           </Box>
+          <Box alignItems="center" flexDirection="column" width="100%">
+            <Box marginTop={1}>
+              <Text bold>{state.message}</Text>
+            </Box>
+            <KeyLegend phase="claiming" />
+          </Box>
         </Box>
       </Box>
     );
   }
-
   // Normal play screen
   return (
     <Box width={terminalWidth}>
       <Box flexDirection="column" padding={1} width="100%">
-        <Text bold>
-          {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
-        </Text>
-        <DoraView state={state} />
+        <Box alignItems="center" flexDirection="column" width="100%">
+          <Text bold>
+            {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
+          </Text>
+          <DoraView state={state} />
+        </Box>
+        <Text dimColor>{"─".repeat(dividerWidth)}</Text>
         <Box flexDirection="column" width="100%">
           {/* 対面 (across) - top center */}
           <Box width="100%">
@@ -853,21 +865,21 @@ const App: React.FC = () => {
             </Box>
           </Box>
         </Box>
-        <Text dimColor>{"─".repeat(40)}</Text>
-        <Box marginTop={1} marginBottom={1}>
-          <Text bold>捨て牌: </Text>
-          {state.lastDiscard ? (
-            <Text color={tileColor(state.lastDiscard.tile)}>
-              {formatTile(state.lastDiscard.tile)} (
-              {["あなた", "下家", "対面", "上家"][state.lastDiscard.player]})
-            </Text>
-          ) : (
-            <Text dimColor>まだありません</Text>
-          )}
-        </Box>
-        <TurnLogView entries={turnLogRef.current} />
-        <Text dimColor>{"─".repeat(40)}</Text>
         <Box alignItems="center" flexDirection="column" width="100%">
+          <Text dimColor>{"─".repeat(dividerWidth)}</Text>
+          <Box marginTop={1} marginBottom={1}>
+            <Text bold>捨て牌: </Text>
+            {state.lastDiscard ? (
+              <Text color={tileColor(state.lastDiscard.tile)}>
+                {formatTile(state.lastDiscard.tile)} (
+                {["あなた", "下家", "対面", "上家"][state.lastDiscard.player]})
+              </Text>
+            ) : (
+              <Text dimColor>まだありません</Text>
+            )}
+          </Box>
+          <TurnLogView entries={turnLogRef.current} />
+          <Text dimColor>{"─".repeat(dividerWidth)}</Text>
           <Box marginTop={1} marginBottom={1}>
             <Text bold>{WIND_NAMES[state.players[0].wind]}家 (あなた) </Text>
             <Text dimColor>({state.players[0].points}点) </Text>
@@ -911,10 +923,12 @@ const App: React.FC = () => {
             </Box>
           )}
         </Box>
-        <Box marginTop={1}>
-          <Text bold>{state.message}</Text>
+        <Box alignItems="center" flexDirection="column" width="100%">
+          <Box marginTop={1}>
+            <Text bold>{state.message}</Text>
+          </Box>
+          <KeyLegend phase="playing" />
         </Box>
-        <KeyLegend phase="playing" />
       </Box>
     </Box>
   );
