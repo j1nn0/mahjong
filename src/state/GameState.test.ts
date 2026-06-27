@@ -409,40 +409,50 @@ describe("abortive draws", () => {
     expect(action).toEqual({ type: "DISCARD", player: 1, tile: s(2) });
   });
 
-  it("processAiTurn chooses genbutsu to discard when an opponent is in riichi", () => {
+  it("processAiTurn does NOT declare riichi for tanki (single-wait) hand", () => {
+    // Hand: 123456789m 123s p1 p9 → discard p9 → tanki wait p1 (1 wait)
     const hand = [
-      m(1),
-      m(2),
-      m(3),
-      m(4),
-      m(5),
-      m(6),
-      m(7),
-      m(8),
-      m(9),
-      s(1),
-      s(2),
-      s(3),
-      p(1),
-      p(9),
+      m(1), m(2), m(3), m(4), m(5), m(6), m(7), m(8), m(9),
+      s(1), s(2), s(3),
+      p(1), p(9),
     ];
     const state = startedState({
       currentPlayer: 1,
       players: makePlayers(
-        {
-          ...makeTestPlayer([]),
-          riichi: true,
-          discards: [{ tile: p(9), isRiichi: true, player: 0 as PlayerWind }],
-        },
+        { ...makeTestPlayer([]), riichi: true, discards: [{ tile: p(9), isRiichi: true, player: 0 as PlayerWind }] },
         makeTestPlayer(hand),
         makeTestPlayer([]),
         makeTestPlayer([]),
       ),
     });
-
     const { action } = processAiTurn(state);
+    // Tanki wait → skip riichi, just discard p9 as genbutsu
+    expect(action).toEqual({ type: "DISCARD", player: 1, tile: p(9) });
+  });
 
-    expect(action).toEqual({ type: "DECLARE_RIICHI", player: 1, discardTile: p(9) });
+  it("processAiTurn declares riichi for ryanmen (multi-wait) hand", () => {
+    // 13-tile tenpai: 234m 678p 345s 56m 55p → ryanmen 4m/7m (2 waits)
+    // Drawn tile s9 doesn't complete the hand, discard s9 → tenpai → riichi
+    const hand = [
+      m(2), m(3), m(4),
+      p(6), p(7), p(8),
+      s(3), s(4), s(5),
+      m(5), m(6),
+      p(5), p(5),
+      s(9), // drawn tile
+    ];
+    const state = startedState({
+      currentPlayer: 1,
+      lastDrawnTile: s(9),
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer(hand),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+    const { action } = processAiTurn(state);
+    expect(action).toEqual({ type: "DECLARE_RIICHI", player: 1, discardTile: s(9) });
   });
 
   it("processAiTurn declares ankan if in riichi and wait does not change", () => {

@@ -505,10 +505,13 @@ export function processAiTurn(state: GameState): {
             state.currentPlayer,
           );
     const testHand = removeOneTile(player.hand, discard);
+    const waits = findWaits(testHand, player.melds);
     if (
       canDeclareRiichi(player) &&
-      findWaits(testHand, player.melds).length > 0 &&
-      player.points >= 1000
+      waits.length > 0 &&
+      player.points >= 1000 &&
+      // Tanki (single-wait) riichi: skip, too hard to win unless hand is valuable
+      waits.length >= 2
     ) {
       return {
         state,
