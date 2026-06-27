@@ -3114,3 +3114,151 @@ describe("Nan'yu and Sudden Death rules", () => {
     expect(afterDraw.riichiSticks).toBe(0);
   });
 });
+
+
+describe("riichi turn flow edge cases", () => {
+  // Helper: 14-tile tenpai hand (13 + 1 drawn).
+  // 234m 567m 234p 345s + pair(p5) → discard p5 → tenpai waiting p5
+  function riichiReady14(): Tile[] {
+    return [m(2), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(3), s(4), s(5), p(5), p(5)];
+  }
+
+  it("sets doubleRiichi when declared on the first turn (no discards)", () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer(riichiReady14()),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+    const after = gameReducer(state, { type: "DECLARE_RIICHI", player: 1, discardTile: p(5) });
+    expect(after.players[1].doubleRiichi).toBe(true);
+    expect(after.players[1].riichi).toBe(true);
+  });
+
+  it("does NOT set doubleRiichi when player has prior discards", () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        {
+          ...makeTestPlayer(riichiReady14()),
+          discards: [{ tile: m(1), isRiichi: false, player: 1 as never }],
+        },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+    const after = gameReducer(state, { type: "DECLARE_RIICHI", player: 1, discardTile: p(5) });
+    expect(after.players[1].doubleRiichi).toBe(false);
+    expect(after.players[1].riichi).toBe(true);
+  });
+
+  it("deducts 1000 points and increments riichi stick", () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer(riichiReady14()),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+      riichiSticks: 2,
+    });
+    const beforePoints = state.players[1].points;
+    const after = gameReducer(state, { type: "DECLARE_RIICHI", player: 1, discardTile: p(5) });
+    expect(after.players[1].points).toBe(beforePoints - 1000);
+    expect(after.riichiSticks).toBe(3);
+  });
+
+  it("sets ippatsu=true on DECLARE_RIICHI", () => {
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer(riichiReady14()),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+    const after = gameReducer(state, { type: "DECLARE_RIICHI", player: 1, discardTile: p(5) });
+    expect(after.players[1].ippatsu).toBe(true);
+  });
+
+  it("clears ippatsu for all players when opponent calls a meld after riichi", () => {
+    const state = startedState({
+      phase: "claiming",
+      currentPlayer: 2,
+      players: makePlayers(
+        { ...makeTestPlayer([]), ippatsu: true },
+        { ...makeTestPlayer([]), riichi: true, ippatsu: true },
+        {
+          ...makeTestPlayer([
+            p(3), p(4), m(1), m(2), m(3), m(4), s(5), s(6), s(7), s(8), s(9), m(5), m(5),
+          ]),
+        },
+        makeTestPlayer([]),
+      ),
+      lastDiscard: { tile: p(5), player: 1 },
+      claimOptions: [
+        {
+          type: "chi",
+          player: 2,
+          tiles: [p(3), p(4), p(5)],
+          calledTile: p(5),
+          meld: { type: MeldType.Chi, tiles: [p(3), p(4), p(5)], calledTile: p(5) },
+          display: "チー",
+        },
+      ],
+    });
+    const afterChi = gameReducer(state, { type: "CHI", player: 2, optionIndex: 0 });
+    expect(afterChi.players[0].ippatsu).toBe(false);
+    expect(afterChi.players[1].ippatsu).toBe(false);
+  });
+
+  it("rejects DECLARE_RIICHI when the hand is not tenpai", () => {
+    // Scattered tiles with no possible tenpai discard
+    const notenHand: Tile[] = [
+      m(1), m(3), m(6), m(8),
+      p(2), p(5), p(8),
+      s(3), s(6), s(9),
+      ton(), nan(), sha(), pei(),
+    ];
+    const state = startedState({
+      currentPlayer: 1,
+      players: makePlayers(
+        makeTestPlayer([]),
+        makeTestPlayer(notenHand),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+    const after = gameReducer(state, { type: "DECLARE_RIICHI", player: 1, discardTile: { suit: Suit.Man, value: 1 } });
+    expect(after.players[1].riichi).toBe(false);
+    expect(after.players[1].doubleRiichi).toBe(false);
+    expect(after.riichiSticks).toBe(0);
+  });
+
+  it("rejects ankan during riichi when the ankan tile is not in hand", () => {
+    const hand = [
+      m(2), m(3), m(4), m(5), m(6), m(7),
+      p(2), p(3), p(4),
+      s(3), s(4), s(5),
+      p(5), p(5),
+    ];
+    const state = startedState({
+      currentPlayer: 0,
+      players: makePlayers(
+        { ...makeTestPlayer(hand), riichi: true },
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+        makeTestPlayer([]),
+      ),
+    });
+    const afterKan = gameReducer(state, { type: "ANKAN", player: 0, tile: m(1) });
+    expect(afterKan.players[0].melds).toHaveLength(0);
+    expect(afterKan.message).toContain("暗槓できません");
+  });
+});

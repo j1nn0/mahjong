@@ -284,7 +284,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // Remove called tile from the discarder's discards
       if (state.lastDiscard) {
         const dIdx = state.lastDiscard.player;
-        const dPlayer = state.players[dIdx];
+        const dPlayer = newPlayers[dIdx];
         const fixedDiscs = removeDiscardByTile(dPlayer.discards, state.lastDiscard.tile);
         newPlayers = updatePlayerInTuple(
           newPlayers,
@@ -341,7 +341,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // Remove called tile from the discarder's discards
       if (state.lastDiscard) {
         const dIdx = state.lastDiscard.player;
-        const dPlayer = state.players[dIdx];
+        const dPlayer = newPlayers[dIdx];
         const fixedDiscs = removeDiscardByTile(dPlayer.discards, state.lastDiscard.tile);
         newPlayers = updatePlayerInTuple(
           newPlayers,
@@ -400,7 +400,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       // Remove called tile from the discarder's discards
       if (state.lastDiscard) {
         const dIdx = state.lastDiscard.player;
-        const dPlayer = state.players[dIdx];
+        const dPlayer = newPlayers[dIdx];
         const fixedDiscs = removeDiscardByTile(dPlayer.discards, state.lastDiscard.tile);
         newPlayers = updatePlayerInTuple(
           newPlayers,
