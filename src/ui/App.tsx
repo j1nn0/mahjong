@@ -703,7 +703,6 @@ const App: React.FC = () => {
             <Text bold>
               {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
             </Text>
-            <DoraView state={state} />
           </Box>
           <Text dimColor>{"─".repeat(dividerWidth)}</Text>
           {/* 対面 (across) - top center */}
@@ -749,6 +748,7 @@ const App: React.FC = () => {
           </Box>
           <Box alignItems="center" flexDirection="column" width="100%">
             <Text dimColor>{"─".repeat(dividerWidth)}</Text>
+            <DoraView state={state} />
             <Box marginTop={1} marginBottom={1}>
               <Text bold>捨て牌: </Text>
               {state.lastDiscard ? (
@@ -819,7 +819,6 @@ const App: React.FC = () => {
           <Text bold>
             {roundName(state.roundNumber, state.roundWind)} / 親: P{state.dealer + 1} / 本場: {state.honba}
           </Text>
-          <DoraView state={state} />
         </Box>
         <Text dimColor>{"─".repeat(dividerWidth)}</Text>
         <Box flexDirection="column" width="100%">
@@ -867,6 +866,7 @@ const App: React.FC = () => {
         </Box>
         <Box alignItems="center" flexDirection="column" width="100%">
           <Text dimColor>{"─".repeat(dividerWidth)}</Text>
+          <DoraView state={state} />
           <Box marginTop={1} marginBottom={1}>
             <Text bold>捨て牌: </Text>
             {state.lastDiscard ? (
