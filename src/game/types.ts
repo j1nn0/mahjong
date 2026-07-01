@@ -99,3 +99,17 @@ export interface RoundState {
   riichiSticks: number; // 供託リーチ棒
   playerWind: PlayerWind; // 現在の親
 }
+
+/** AI性格パラメータ (1-5)。値が大きいほどその特性が強い */
+export interface AiPersonality {
+  /** 押しの積極性 */
+  aggression: number;
+  /** 危険牌許容度 */
+  riskTolerance: number;
+  /** 鳴き頻度 */
+  meldFrequency: number;
+  /** リーチ頻度 */
+  riichiFrequency: number;
+  /** 打点志向 (低い=スピード優先、高い=高打点優先) */
+  handValueFocus: number;
+}

@@ -13,7 +13,7 @@ import {
   finishAbortiveDraw,
 } from "./GameState.js";
 import type { GameState, PlayerData } from "./GameState.js";
-import { MeldType, Suit, type Tile, type Meld, type Discard, PlayerWind } from "../game/types.js";
+import { MeldType, Suit, type AiPersonality, type Tile, type Meld, type Discard, PlayerWind } from "../game/types.js";
 import type { ScoreResult } from "../game/scoring.js";
 import { YakuId } from "../game/yaku.js";
 
@@ -51,6 +51,7 @@ function makeTestPlayer(hand: Tile[]): PlayerData {
     riichiFuriten: false,
     points: 25000,
     wind: 0 as never,
+    personality: null,
   };
 }
 
@@ -1655,6 +1656,40 @@ describe("east-only match progression", () => {
     expect(state.dealer).toBe(0);
     expect(state.currentPlayer).toBe(0);
     expect(state.players[0].wind).toBe(0);
+  });
+
+  it("preserves AI personalities after dealing a new round", () => {
+    const defensive: AiPersonality = {
+      aggression: 1,
+      riskTolerance: 1,
+      meldFrequency: 2,
+      riichiFrequency: 1,
+      handValueFocus: 3,
+    };
+    const aggressive: AiPersonality = {
+      aggression: 5,
+      riskTolerance: 4,
+      meldFrequency: 4,
+      riichiFrequency: 5,
+      handValueFocus: 2,
+    };
+    const handValue: AiPersonality = {
+      aggression: 3,
+      riskTolerance: 3,
+      meldFrequency: 1,
+      riichiFrequency: 3,
+      handValueFocus: 5,
+    };
+
+    const state = gameReducer(
+      createInitialState(() => 0),
+      { type: "START_GAME", dealer: 0, personalities: [null, defensive, aggressive, handValue] },
+    );
+
+    expect(state.players[0].personality).toBeNull();
+    expect(state.players[1].personality).toEqual(defensive);
+    expect(state.players[2].personality).toEqual(aggressive);
+    expect(state.players[3].personality).toEqual(handValue);
   });
 
   it("produces expected non-zero dealer with fixed random", () => {

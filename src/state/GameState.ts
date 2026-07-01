@@ -6,11 +6,12 @@ import {
   Wind,
   Suit,
   PlayerWind,
+  type AiPersonality,
 } from "../game/types.js";
-import { buildWall, drawFromWall, sortHand } from "../game/tiles.js";
+import { buildWall, drawFromWall, sortHand, getDoraIndicators } from "../game/tiles.js";
 import { findTenpaiTiles, indexToTile, tileToIndex } from "../game/agari.js";
 import { fullScore, type ScoreResult } from "../game/scoring.js";
-import { aiChooseDiscard } from "../game/ai.js";
+import { aiChooseDiscard, estimateMinPoints } from "../game/ai.js";
 import type {
   PlayerData,
   GameState,
@@ -122,7 +123,7 @@ function isSameTileKind(a: Tile, b: Tile): boolean {
 }
 export { isSameTileKind };
 
-function makePlayer(wind: number, points: number): PlayerData {
+function makePlayer(wind: number, points: number, personality: AiPersonality | null = null): PlayerData {
   return {
     hand: [],
     melds: [],
@@ -134,6 +135,7 @@ function makePlayer(wind: number, points: number): PlayerData {
     riichiFuriten: false,
     points,
     wind: wind as Wind,
+    personality,
   };
 }
 
@@ -339,6 +341,7 @@ export function dealRound(
     riichiFuriten: false,
     points: player.points,
     wind: playerWind(i, dealer),
+    personality: i === 0 ? null : (player.personality ?? null),
   })) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
   const { drawn: dealerHand, remaining: afterDealer } = drawFromWall(wallData.wall, 14);
   let wallRemaining = afterDealer;
@@ -411,8 +414,60 @@ export function dealRound(
 
   return initialState;
 }
-
 // ── AI ──────────────────────────────────────────────────────────────
+
+function isLegacyPersonality(personality: AiPersonality): boolean {
+  return personality.aggression === 2
+    && personality.riskTolerance === 2
+    && personality.meldFrequency === 2
+    && personality.riichiFrequency === 2
+    && personality.handValueFocus === 3;
+}
+
+function riichiValueFloorForFocus(handValueFocus: number): number {
+  if (handValueFocus >= 5) return 3900;
+  if (handValueFocus === 4) return 2000;
+  return 0;
+}
+
+/** 性格に基づくリーチ判断 */
+function shouldDeclareRiichi(
+  player: PlayerData,
+  waits: readonly number[],
+  minPoints: number,
+): boolean {
+  if (!canDeclareRiichi(player) || waits.length === 0 || player.points < 1000) return false;
+  const p = player.personality;
+  if (!p || isLegacyPersonality(p)) return waits.length >= 2; // 性格なし/標準: 従来通り
+
+  // 打点志向が高いAIは、安い単騎・低打点リーチを抑制する。
+  if (minPoints < riichiValueFloorForFocus(p.handValueFocus)) return false;
+
+  // riichiFrequency に基づく判定
+  const freq = p.riichiFrequency;
+  if (freq >= 4) return true;      // 4以上: どんなテンパイでもリーチ
+  if (freq === 3) return true;     // 3: 単騎でもリーチ
+  if (freq === 2) return waits.length >= 2 || minPoints >= 2000; // 2: 多面 or 2000点以上
+  // freq === 1: 多面待ちかつ2000点以上 or 3900点以上
+  return (waits.length >= 2 && minPoints >= 2000) || minPoints >= 3900;
+}
+
+/** 性格に基づく副露判断 */
+function aiShouldClaim(
+  option: MeldClaimOption,
+  player: PlayerData,
+  simulated: { hand: Tile[]; melds: Meld[] },
+): boolean {
+  if (option.type === "daiminkan") return true; // 大明カンは常に
+  const p = player.personality;
+  if (!p) return isMeldTanyaoAiming(option) || isMeldTenpaiMaking(simulated); // 従来
+
+  // meldFrequency に基づく判定
+  if (p.meldFrequency >= 4) return true; // 4以上: どんな鳴きでもする
+  if (p.meldFrequency === 3) return isMeldTenpaiMaking(simulated) || isMeldTanyaoAiming(option);
+  // 1-2: 従来通り（タンヤオ or テンパイ）
+  return isMeldTanyaoAiming(option) || isMeldTenpaiMaking(simulated);
+}
 
 export function processAiTurn(state: GameState): {
   state: GameState;
@@ -426,9 +481,10 @@ export function processAiTurn(state: GameState): {
     const claim = aiClaims.find((c) => {
       if (c.type === "ron") return ronScore(state, c.player) !== null;
       if (c.type === "daiminkan") return true;
-      const simulated = simulateMeldClaim(state.players[c.player], c as MeldClaimOption);
+      const myPlayer = state.players[c.player];
+      const simulated = simulateMeldClaim(myPlayer, c as MeldClaimOption);
       if (!canDiscardAfterMeldClaim(c as MeldClaimOption, simulated)) return false;
-      return isMeldTanyaoAiming(c as MeldClaimOption) || isMeldTenpaiMaking(simulated);
+      return aiShouldClaim(c as MeldClaimOption, myPlayer, simulated);
     });
     if (claim) {
       if (claim.type === "ron") return { state, action: { type: "RON", winner: claim.player } };
@@ -453,6 +509,13 @@ export function processAiTurn(state: GameState): {
   if (totalTiles <= needDraw) {
     return { state, action: { type: "DRAW", player: state.currentPlayer } };
   }
+
+  // ── Personality context ──────────────────────────────────────────
+  const personality = player.personality;
+  const doraIndicators = getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount);
+  const roundWind = state.roundWind as Wind;
+  const playerWind = player.wind;
+
   if (totalTiles === readyDiscard && player.hand.length > 0) {
     if (canDeclareKyuushuKyuuhai(state, state.currentPlayer)) {
       return { state, action: { type: "DECLARE_KYUUSHU_KYUUHAI", player: state.currentPlayer } };
@@ -503,14 +566,30 @@ export function processAiTurn(state: GameState): {
             state.kuikaeProhibitedTiles,
             state.players.map((p) => p.melds),
             state.currentPlayer,
+            personality ?? undefined,
+            doraIndicators.length > 0 ? doraIndicators : undefined,
+            roundWind,
+            playerWind,
+            player.riichi,
           );
     const testHand = removeOneTile(player.hand, discard);
     const waits = findWaits(testHand, player.melds);
-    if (
+
+    // 性格ベースのリーチ判断
+    if (personality) {
+      const estimate = estimateMinPoints(
+        testHand, player.melds, doraIndicators, roundWind, playerWind, player.riichi,
+      );
+      if (shouldDeclareRiichi(player, waits, estimate.minPoints)) {
+        return {
+          state,
+          action: { type: "DECLARE_RIICHI", player: state.currentPlayer, discardTile: discard },
+        };
+      }
+    } else if (
       canDeclareRiichi(player) &&
       waits.length > 0 &&
       player.points >= 1000 &&
-      // Tanki (single-wait) riichi: skip, too hard to win unless hand is valuable
       waits.length >= 2
     ) {
       return {
@@ -528,6 +607,11 @@ export function processAiTurn(state: GameState): {
       state.kuikaeProhibitedTiles,
       state.players.map((p) => p.melds),
       state.currentPlayer,
+      personality ?? undefined,
+      doraIndicators.length > 0 ? doraIndicators : undefined,
+      roundWind,
+      playerWind,
+      player.riichi,
     );
     return { state, action: { type: "DISCARD", player: state.currentPlayer, tile: discard } };
   }
@@ -606,6 +690,10 @@ function normalizePlayer(value: unknown, fallback: PlayerData): PlayerData {
       typeof value.riichiFuriten === "boolean" ? value.riichiFuriten : fallback.riichiFuriten,
     points: typeof value.points === "number" ? value.points : fallback.points,
     wind: typeof value.wind === "number" ? (value.wind as Wind) : fallback.wind,
+    personality:
+      value.personality && typeof value.personality === "object"
+        ? (value.personality as AiPersonality)
+        : null,
   };
 }
 

@@ -1,5 +1,5 @@
-import { type Tile, type Meld, Suit } from './types.js';
-import { sortHand } from './tiles.js';
+import { type Tile, type Meld, Suit, type AiPersonality, Wind } from './types.js';
+import { sortHand, countDora } from './tiles.js';
 import { findTenpaiTiles, tileToIndex, indexToTile, calcShanten } from './agari.js';
 
 // ── Suji helper ──────────────────────────────────────────────────────
@@ -211,53 +211,7 @@ function evaluateDiscards(
   return results;
 }
 
-// ── Public API ───────────────────────────────────────────────────────
-
-/**
- * AIが切る牌を選択する。
- * テンパイする牌の中から最も安全な牌を選び、
- * テンパイできない場合は孤立牌優先（従来ロジック）。
- */
-export function aiChooseDiscard(
-  hand: readonly Tile[],
-  opponentDiscards: readonly (readonly Tile[])[],
-  opponentRiichi: readonly boolean[],
-  prohibitedTiles: readonly Tile[] = [],
-  opponentMelds?: readonly (readonly Meld[])[],
-  selfIndex?: number,
-): Tile {
-  if (hand.length !== 14) {
-    // 14枚でなければエラーだが、fallback
-    return hand.find(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) ?? hand[0] ?? indexToTile(0);
-  }
-
-  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi, prohibitedTiles, opponentMelds, selfIndex);
-
-  // テンパイする候補に絞る
-  const tenpaiCandidates = evals.filter(e => e.tenpai.length > 0);
-  if (tenpaiCandidates.length > 0) {
-    // テンパイ候補中、最も危険度の低い牌を選ぶ
-    const sorted = [...tenpaiCandidates].sort((a, b) => a.danger - b.danger);
-    return sorted[0]!.tile;
-  }
-
-  // テンパイできない: シャンテン数を最小化する打牌を選ぶ
-  const candidates: Array<{ tile: Tile; shanten: number }> = [];
-  for (const t of hand) {
-    if (prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) continue;
-    const testHand = hand.filter(h => h !== t);
-    const shanten = calcShanten(testHand);
-    candidates.push({ tile: t, shanten });
-  }
-
-  if (candidates.length > 0) {
-    const minShanten = Math.min(...candidates.map(c => c.shanten));
-    const bestTiles = candidates.filter(c => c.shanten === minShanten).map(c => c.tile);
-    return fallbackIsolated(bestTiles, hand, opponentDiscards, prohibitedTiles);
-  }
-
-  return fallbackIsolated(hand, hand, opponentDiscards, prohibitedTiles);
-}
+// ── Old aiChooseDiscard replaced below ─────────────────────────────
 
 /** 孤立牌優先のfallback */
 function fallbackIsolated(
@@ -316,4 +270,188 @@ function fallbackIsolated(
 /** テンパイ判断: この手牌(13枚)でfindTenpaiTilesが空でないか */
 export function canTenpai(hand: readonly Tile[]): boolean {
   return findTenpaiTiles(hand).length > 0;
+}
+
+// ── Hand value estimation ──────────────────────────────────────────
+
+export interface HandEstimate {
+  /** 最低推定打点 */
+  minPoints: number;
+  /** 確定している飜数（ドラ除く） */
+  confirmedHan: number;
+  /** ドラ飜数 */
+  doraHan: number;
+}
+
+/** 簡易打点推定。確定している役とドラのみを考慮し、最小打点を返す */
+export function estimateMinPoints(
+  hand: readonly Tile[],
+  melds: readonly Meld[],
+  doraIndicators: readonly Tile[],
+  roundWind: Wind,
+  playerWind: Wind,
+  isRiichi: boolean = false,
+): HandEstimate {
+  let confirmedHan = 0;
+  if (isRiichi) confirmedHan += 1;
+
+  // 役牌: ドラ・風牌の刻子/槓子が副露面子にある
+  for (const meld of melds) {
+    if (meld.type === 'closedKan') continue; // 暗槓は手牌扱い
+    const tile = meld.tiles[0]!;
+    if (tile.suit === Suit.Dragon) {
+      confirmedHan += 1;
+    } else if (tile.suit === Suit.Wind) {
+      if (tile.value === playerWind) confirmedHan += 1; // 自風
+      if (tile.value === roundWind) confirmedHan += 1;  // 場風（ダブ東などで2翻）
+    }
+  }
+
+  // タンヤオ: 全ての牌（手牌+副露）が中張牌(2-8)である
+  let allSimples = true;
+  for (const tile of hand) {
+    if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) { allSimples = false; break; }
+    if (tile.value === 1 || tile.value === 9) { allSimples = false; break; }
+  }
+  if (allSimples) {
+    for (const meld of melds) {
+      for (const tile of meld.tiles) {
+        if (tile.suit === Suit.Wind || tile.suit === Suit.Dragon) { allSimples = false; break; }
+        if (tile.value === 1 || tile.value === 9) { allSimples = false; break; }
+      }
+      if (!allSimples) break;
+    }
+  }
+  if (allSimples) confirmedHan += 1;
+
+  // ドラ
+  const allTiles = [...hand, ...melds.flatMap((m) => m.tiles)];
+  const doraHan = countDora(allTiles, doraIndicators, false);
+
+  // 最低打点の概算
+  const totalHan = confirmedHan + doraHan;
+  const minPoints = confirmedHan > 0
+    ? totalHan >= 5 ? 8000
+      : totalHan === 4 ? 7700
+      : totalHan === 3 ? 3900
+      : totalHan === 2 ? 2000
+      : 1000
+    : 0;
+
+  return { minPoints, confirmedHan, doraHan };
+}
+
+// ── Personality push/fold ──────────────────────────────────────────
+
+function isLegacyPersonality(personality: AiPersonality): boolean {
+  return personality.aggression === 2
+    && personality.riskTolerance === 2
+    && personality.meldFrequency === 2
+    && personality.riichiFrequency === 2
+    && personality.handValueFocus === 3;
+}
+
+function valueFloorForFocus(handValueFocus: number): number {
+  if (handValueFocus >= 5) return 3900;
+  if (handValueFocus === 4) return 2000;
+  return 0;
+}
+
+
+/** 性格に基づき、危険牌を押すべきか判断する */
+function shouldPush(
+  handValue: number,
+  waitCount: number,
+  danger: number,
+  personality: AiPersonality,
+): boolean {
+  if (handValue < valueFloorForFocus(personality.handValueFocus)) return false;
+  const winProb = Math.min(1, waitCount / 34);
+  // score = 推定打点 × 和了確率 × aggression - 危険度 × riskPenalty
+  // riskTolerance は危険度ペナルティを下げるだけで、危険牌を加点しない。
+  const riskPenalty = Math.max(0, 4 - personality.riskTolerance);
+  const score = handValue * winProb * personality.aggression - danger * riskPenalty;
+  return score > 0 || (handValue > 0 && danger === 0);
+}
+
+// ── Updated aiChooseDiscard ────────────────────────────────────────
+
+/** 性格パラメータを考慮した打牌選択 */
+export function aiChooseDiscard(
+  hand: readonly Tile[],
+  opponentDiscards: readonly (readonly Tile[])[],
+  opponentRiichi: readonly boolean[],
+  prohibitedTiles: readonly Tile[] = [],
+  opponentMelds?: readonly (readonly Meld[])[],
+  selfIndex?: number,
+  personality?: AiPersonality,
+  doraIndicators?: readonly Tile[],
+  roundWind?: Wind,
+  playerWind?: Wind,
+  isRiichi?: boolean,
+): Tile {
+  if (hand.length !== 14) {
+    return hand.find(t => !prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) ?? hand[0] ?? indexToTile(0);
+  }
+
+  const evals = evaluateDiscards(hand, opponentDiscards, opponentRiichi, prohibitedTiles, opponentMelds, selfIndex);
+
+  // テンパイ候補
+  const tenpaiCandidates = evals.filter(e => e.tenpai.length > 0);
+
+  if (
+    tenpaiCandidates.length > 0
+    && personality
+    && !isLegacyPersonality(personality)
+    && doraIndicators !== undefined
+    && roundWind !== undefined
+    && playerWind !== undefined
+  ) {
+    // ── 性格ベースの押し引き ──
+    const ownMelds = selfIndex !== undefined && opponentMelds ? (opponentMelds[selfIndex] ?? []) : [];
+
+    // テンパイ候補を押す価値があるか、打牌後の手牌価値で評価する。
+    const pushable = tenpaiCandidates.filter((e) => {
+      const testHand = hand.filter((h) => h !== e.tile);
+      const estimate = estimateMinPoints(testHand, ownMelds, doraIndicators, roundWind, playerWind, isRiichi);
+      return shouldPush(estimate.minPoints, e.tenpai.length, e.danger, personality);
+    });
+
+    if (pushable.length > 0) {
+      // 押せる候補の中で最も安全な牌を選ぶ
+      pushable.sort((a, b) => a.danger - b.danger);
+      return pushable[0]!.tile;
+    }
+    // 押せる候補がない → 降りる: テンパイを崩しても安全な牌を切る
+    const nonTenpai = evals.filter(e => e.tenpai.length === 0);
+    if (nonTenpai.length > 0) {
+      nonTenpai.sort((a, b) => a.danger - b.danger);
+      return nonTenpai[0]!.tile;
+    }
+    // 全てテンパイ（ありえないが念のため）
+    return tenpaiCandidates.sort((a, b) => a.danger - b.danger)[0]!.tile;
+  }
+
+  // ── 性格なし or パラメータ不足: 従来ロジック ──
+  if (tenpaiCandidates.length > 0) {
+    tenpaiCandidates.sort((a, b) => a.danger - b.danger);
+    return tenpaiCandidates[0]!.tile;
+  }
+
+  // テンパイできない: シャンテン数最小化
+  const candidates: Array<{ tile: Tile; shanten: number }> = [];
+  for (const t of hand) {
+    if (prohibitedTiles.some(p => p.suit === t.suit && p.value === t.value)) continue;
+    const testHand = hand.filter(h => h !== t);
+    const shanten = calcShanten(testHand);
+    candidates.push({ tile: t, shanten });
+  }
+
+  if (candidates.length > 0) {
+    const minShanten = Math.min(...candidates.map(c => c.shanten));
+    const bestTiles = candidates.filter(c => c.shanten === minShanten).map(c => c.tile);
+    return fallbackIsolated(bestTiles, hand, opponentDiscards, prohibitedTiles);
+  }
+
+  return fallbackIsolated(hand, hand, opponentDiscards, prohibitedTiles);
 }
