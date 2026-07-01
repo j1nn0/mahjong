@@ -1,0 +1,42 @@
+---
+id: TASK-20
+title: 'Phase 39: UI/UX 総合改善'
+status: Done
+assignee: []
+created_date: '2026-06-30 23:54'
+updated_date: '2026-07-01 00:02'
+labels:
+  - ux
+dependencies: []
+priority: medium
+ordinal: 20
+---
+
+## Description
+
+<!-- SECTION:DESCRIPTION:BEGIN -->
+ゲーム全体の視認性・操作性・情報量を向上させる包括的な UI/UX 改善。
+<!-- SECTION:DESCRIPTION:END -->
+
+## Acceptance Criteria
+<!-- AC:BEGIN -->
+- [x] #1 **巡目把握**: 残り巡数とリーチ棒を常時表示（`TurnInfo` コンポーネント）
+- [x] #2 **ターン進行ログ**: 直近5件の捨て牌履歴を表示（`TurnLogView` コンポーネント、`useRef` で追跡）
+- [x] #3 **テンパイ状況**: シャンテン数（`calcShanten`）＋待ち牌を手牌下に常時表示（トグル廃止）
+- [x] #4 **相手の状態変化**: リーチ表示を bold yellow に変更、メルドなし時は副露行を非表示
+- [x] #5 **操作の直感性**: `KeyLegend` を色付きキー文字でリッチ化
+- [x] #6 **色の使い方**: ドラ表示牌を bold + color、選択牌を `inverse` → `underline`+`bold`、赤ドラ牌を `bold`+赤、メッセージを太字で表示
+- [x] #7 **レイアウト順**: playing/claiming 両画面を ラウンド→ドラ→相手→捨て牌→ログ→自分→手牌→巡目→アクション→シャンテン＋待ち→メッセージ→キー凡例 に再構成
+- [x] #8 `MeldView`: 空メルド時に `null` を返しノイズ削減
+- [x] #9 `ActionBar`: シンプル化（WaitsInfo・message 削除）
+<!-- AC:END -->
+
+
+
+## Implementation Notes
+
+<!-- SECTION:NOTES:BEGIN -->
+- `src/ui/App.tsx`: HandView 選択ハイライト変更、TurnInfo/TurnLogView 追加、DoraView 太字化、OpponentInfo リーチ bold yellow/副露条件表示、ActionBar 簡素化、shanten+waits 常時表示、layout 再構成
+- `src/ui/KeyLegend.tsx`: 色付きキー文字によるリッチ表示
+- `src/ui/KeyLegend.test.tsx`: 新 KeyLegend に合わせてテスト更新
+<!-- SECTION:NOTES:END -->
