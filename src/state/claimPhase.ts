@@ -247,6 +247,22 @@ export function detectResponsibility(
   return null;
 }
 
+/** プレイヤーの副露から責任払い情報を抽出（あがり時の支払い判定用） */
+export function getResponsibilityInfo(melds: readonly Meld[]): {
+  responsiblePlayer?: number;
+  responsibilityType?: ResponsibilityType;
+} {
+  for (const meld of melds) {
+    if (meld.responsibility && meld.calledFrom !== undefined) {
+      return {
+        responsiblePlayer: meld.calledFrom,
+        responsibilityType: meld.responsibility,
+      };
+    }
+  }
+  return {};
+}
+
 // ── Clear temporary furiten and ippatsu ────────────────────────────
 
 export function clearTemporaryFuritenAndIppatsu(

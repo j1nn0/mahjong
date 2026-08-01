@@ -1,5 +1,4 @@
 import { type ScoreResult } from "../game/scoring.js";
-import { closedTilesForTsumo, isCompleteHand } from "../game/winValidity.js";
 import {
   finishRound,
   finishAbortiveDraw,
@@ -8,7 +7,8 @@ import {
   applyTsumoPayment,
   formatResponsibilityMessage,
 } from "./finishRound.js";
-import { ronScore, ronClaimPlayers, scoreTsumo, getResponsibilityInfo } from "./winScoring.js";
+import { getResponsibilityInfo } from "./claimPhase.js";
+import { ronScore, ronClaimPlayers, scoreTsumo } from "./winScoring.js";
 import type { GameState, GameAction } from "./types.js";
 
 // ── Winning actions (ron / tsumo) ──────────────────────────────────
@@ -92,14 +92,14 @@ export function handleTsumo(
   const player = action.player;
   const winTile =
     state.lastDrawnTile ?? state.players[player].hand[state.players[player].hand.length - 1]!;
-  const closedTiles = closedTilesForTsumo(state.players[player].hand, winTile);
-  if (!isCompleteHand(closedTiles, state.players[player].melds, winTile)) {
-    return { ...state, message: "ツモ和了できません" };
+  const result = scoreTsumo(state, player, winTile);
+  if (!result.ok) {
+    return {
+      ...state,
+      message: result.reason === "notWinning" ? "ツモ和了できません" : "スコア計算できません",
+    };
   }
-  const score = scoreTsumo(state, player, winTile);
-  if (!score) {
-    return { ...state, message: "スコア計算できません" };
-  }
+  const score = result.score;
   const updatedTsPlayers = applyTsumoPayment(state.players, player, score);
   const yakuStr = score.yaku.map((y) => y.name).join("・");
   const resp = getResponsibilityInfo(state.players[player].melds);

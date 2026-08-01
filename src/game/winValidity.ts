@@ -11,17 +11,19 @@ export function closedTilesForTsumo(hand: readonly Tile[], winTile: Tile): reado
 }
 
 /** 手牌・面子・和了牌からあがり形の成立を判定する（門前は七対子・国士無双も含む） */
+// 注: ロン/ツモの区別は boolean 結果に影響しない。decomposeStandardHand の ron 分岐は
+// 和了牌入り刻子の isOpen マーキングのみで、ここでは捨てられる。実際の区別(三暗刻・四暗刻)は
+// fullScore→detectYaku が自前のフラグで再導出する。
 export function isCompleteHand(
   closedTiles: readonly Tile[],
   melds: readonly Meld[],
   winTile: Tile,
-  isTsumo = true,
 ): boolean {
   const allClosedTiles = [...closedTiles, winTile];
   if (melds.length === 0) {
     return isWinningHand(tilesToCounts(allClosedTiles));
   }
-  return decomposeStandardHand(allClosedTiles, melds, winTile, isTsumo) !== null;
+  return decomposeStandardHand(allClosedTiles, melds, winTile, true) !== null;
 }
 
 /** 待ち牌の配列を返す (既存の面子を固定して計算) */
