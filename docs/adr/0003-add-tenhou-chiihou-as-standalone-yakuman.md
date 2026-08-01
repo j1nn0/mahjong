@@ -1,3 +1,7 @@
+---
+status: 完了
+---
+
 # Add tenhou and chiihou as standalone yakuman
 
 Tenhou (dealer wins at deal time) and chiihou (non-dealer wins on first draw with no calls) are added as yakuman. Both are treated as standalone: even if the hand also qualifies for another yakuman (e.g. kokushi or suuankou), only one yakuman is counted. Stacking with double-yakuman hands is not allowed.

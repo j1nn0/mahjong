@@ -1,4 +1,4 @@
-import { type Tile, type Meld, type Discard, Wind } from "../game/types.js";
+import { type Tile, type Meld, type Discard, Wind, type AiPersonality } from "../game/types.js";
 import { type ScoreResult } from "../game/scoring.js";
 
 // ── Types ─────────────────────────────────────────────────────────
@@ -13,6 +13,7 @@ export interface PlayerData {
   temporaryFuriten: boolean;
   riichiFuriten: boolean;
   points: number;
+  personality: AiPersonality | null;
   wind: Wind;
 }
 
@@ -90,12 +91,16 @@ export interface GameState {
   roundHistory: readonly RoundHistoryItem[];
 }
 
+
+
 // ── Actions ────────────────────────────────────────────────────────
 
 export type GameAction =
   | {
       type: "START_GAME";
       dealer?: number;
+      /** AIプレイヤー (index 1-3) に設定する性格。未指定または null の要素はデフォルト */
+      personalities?: readonly (AiPersonality | null)[];
     }
   | {
       type: "DRAW";

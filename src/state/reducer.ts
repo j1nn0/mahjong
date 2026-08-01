@@ -1,4 +1,4 @@
-import { type Tile, type Meld, MeldType, PlayerWind, Wind } from "../game/types.js";
+import { type Tile, type Meld, MeldType, PlayerWind, Wind, type AiPersonality } from "../game/types.js";
 import { formatTile, sortHand, drawFromWall, drawDeadWall } from "../game/tiles.js";
 import { indexToTile } from "../game/agari.js";
 import { fullScore, type ScoreResult } from "../game/scoring.js";
@@ -82,11 +82,19 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         ).state,
       );
     case "START_GAME": {
-      const dealer = (action as { type: "START_GAME"; dealer?: number }).dealer
-        ?? Math.floor(Math.random() * 4);
+      const actionData = action as { type: "START_GAME"; dealer?: number; personalities?: readonly (AiPersonality | null)[] };
+      const dealer = actionData.dealer ?? Math.floor(Math.random() * 4);
       const resetPlayers = state.players.map(
-        (p) => ({ ...p, points: 25000 }),
+        (p) => ({ ...p, points: 25000, personality: null }),
       ) as unknown as [PlayerData, PlayerData, PlayerData, PlayerData];
+      const personalities = actionData.personalities;
+      if (personalities) {
+        for (let i = 0; i < 4; i++) {
+          if (i < personalities.length && personalities[i] != null) {
+            resetPlayers[i] = { ...resetPlayers[i], personality: personalities[i] };
+          }
+        }
+      }
       return dealRound(
         { ...state, players: resetPlayers, roundWind: Wind.Ton, startingDealer: dealer },
         dealer,

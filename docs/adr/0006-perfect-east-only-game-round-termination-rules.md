@@ -1,3 +1,7 @@
+---
+status: 完了
+---
+
 # ADR 0006: Perfect East-Only Game Round Termination Rules
 
 ## Context

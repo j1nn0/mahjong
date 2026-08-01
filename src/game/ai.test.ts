@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { aiChooseDiscard, evaluateDanger } from '../game/ai.js';
-import { MeldType, Suit, Wind, type Meld, type Tile } from '../game/types.js';
+import { aiChooseDiscard, evaluateDanger, estimateMinPoints } from '../game/ai.js';
+import { MeldType, Suit, Wind, type AiPersonality, type Meld, type Tile } from '../game/types.js';
 
 function m(v: number, r?: boolean): Tile {
   return { suit: Suit.Man, value: v as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, red: r ?? false };
@@ -331,5 +331,201 @@ describe('aiChooseDiscard', () => {
 
     // Should discard nan() or ton() to keep shanten 1
     expect([nan(), ton()]).toContainEqual(chosen);
+  });
+});
+
+// ── Personality / Hand value estimation ─────────────────────────────
+
+
+describe('estimateMinPoints', () => {
+  it('returns 0 for a hand with no confirmed yaku', () => {
+    // Terminal tile (m1) breaks tanyao, no riichi, no melds
+    const hand = [m(1), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(2), s(3), s(4), s(7), s(8)];
+    const result = estimateMinPoints(hand, [], [], Wind.Ton, Wind.Ton);
+    expect(result.minPoints).toBe(0);
+    expect(result.confirmedHan).toBe(0);
+  });
+
+  it('counts riichi as 1 han', () => {
+    // Hand with terminal (m1) → no tanyao, riichi gives 1 han
+    const hand = [m(1), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(2), s(3), s(4), s(7), s(8)];
+    const result = estimateMinPoints(hand, [], [], Wind.Ton, Wind.Ton, true);
+    expect(result.confirmedHan).toBe(1);
+    expect(result.minPoints).toBe(1000);
+  });
+  it('detects yakuhai from open dragon meld', () => {
+    const meld: Meld = {
+      type: MeldType.Poon,
+      tiles: [{ suit: Suit.Dragon, value: 0 }, { suit: Suit.Dragon, value: 0 }, { suit: Suit.Dragon, value: 0 }],
+      calledTile: { suit: Suit.Dragon, value: 0 },
+    };
+    const result = estimateMinPoints([m(2), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(2), s(3), s(4), s(7)], [meld], [], Wind.Ton, Wind.Ton);
+    expect(result.confirmedHan).toBe(1);
+    expect(result.minPoints).toBe(1000);
+  });
+
+  it('detects tanyao when all tiles are simples', () => {
+    const hand = [m(2), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(2), s(3), s(4), s(5), s(6)];
+    const result = estimateMinPoints(hand, [], [], Wind.Ton, Wind.Ton);
+    expect(result.confirmedHan).toBe(1);
+    expect(result.minPoints).toBe(1000);
+  });
+
+  it('does not count tanyao when yaochu tiles present', () => {
+    const hand = [m(1), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(2), s(3), s(4), s(5), s(6)];
+    const result = estimateMinPoints(hand, [], [], Wind.Ton, Wind.Ton);
+    expect(result.confirmedHan).toBe(0);
+  });
+
+  it('counts dora correctly from indicators', () => {
+    const hand = [m(5), m(3), m(4), m(5), m(6), m(7), p(2), p(3), p(4), s(2), s(3), s(4), s(5), s(6)];
+    // dora indicator m(4) → dora tile is m(5)
+    const doraIndicators = [m(4)];
+    const result = estimateMinPoints(hand, [], doraIndicators, Wind.Ton, Wind.Ton);
+    // has tanyao (1 han) + dora (m5 count=2 → 2 dora) = 3 total han
+    expect(result.confirmedHan).toBe(1);
+    expect(result.doraHan).toBe(2);
+    expect(result.minPoints).toBe(3900);
+  });
+
+  it('estimates mangan for 5+ han', () => {
+    const hand = [m(5), m(5), m(5), m(6), m(7), p(2), p(3), p(4), s(2), s(3), s(4), s(5), s(6), s(7)];
+    // riichi (1 han) + tanyao (1 han) + 3 dora from triple m5
+    const doraIndicators = [m(4)]; // dora = m5
+    const result = estimateMinPoints(hand, [], doraIndicators, Wind.Ton, Wind.Ton, true);
+    expect(result.minPoints).toBe(8000);
+  });
+});
+
+describe('aiChooseDiscard with personality', () => {
+  const defensive: AiPersonality = { aggression: 1, riskTolerance: 1, meldFrequency: 2, riichiFrequency: 2, handValueFocus: 3 };
+  const aggressive: AiPersonality = { aggression: 5, riskTolerance: 5, meldFrequency: 5, riichiFrequency: 5, handValueFocus: 1 };
+
+  it('defensive AI folds instead of pushing no-yaku dangerous tenpai', () => {
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      s(1), s(2), s(3),
+      p(1), p(9),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [], [], []];
+    const riichi: readonly boolean[] = [true, true, true, true];
+
+    const chosen = aiChooseDiscard(
+      hand, discards, riichi, [], undefined, 0,
+      defensive, [], Wind.Ton, Wind.Ton, false,
+    );
+
+    expect(chosen.suit).not.toBe(Suit.Pin);
+  });
+
+  it('does not treat maximum risk tolerance as a bonus for dangerous no-yaku pushes', () => {
+    const recklessNoValue: AiPersonality = {
+      aggression: 5,
+      riskTolerance: 5,
+      meldFrequency: 5,
+      riichiFrequency: 5,
+      handValueFocus: 1,
+    };
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      s(1), s(2), s(3),
+      p(1), p(9),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [], [], []];
+    const riichi: readonly boolean[] = [true, true, true, true];
+
+    const chosen = aiChooseDiscard(
+      hand, discards, riichi, [], undefined, 0,
+      recklessNoValue, [], Wind.Ton, Wind.Ton, false,
+    );
+
+    expect(chosen.suit).not.toBe(Suit.Pin);
+  });
+
+  it('aggressive AI pushes a cheap tanyao tenpai even with dangerous discard', () => {
+    const hand = [
+      m(2), m(3), m(4),
+      m(5), m(6), m(7),
+      m(6), m(7), m(8),
+      s(2), s(3), s(4),
+      p(2), p(8),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [], [], []];
+    const riichi: readonly boolean[] = [true, true, true, true];
+
+    const chosen = aiChooseDiscard(
+      hand, discards, riichi, [], undefined, 0,
+      aggressive, [], Wind.Ton, Wind.Ton, false,
+    );
+
+    expect(chosen.suit).toBe(Suit.Pin);
+  });
+
+  it('handValueFocus suppresses cheap pushes for value-focused AI', () => {
+    const valueFocused: AiPersonality = {
+      aggression: 5,
+      riskTolerance: 5,
+      meldFrequency: 2,
+      riichiFrequency: 3,
+      handValueFocus: 5,
+    };
+    const hand = [
+      m(2), m(3), m(4),
+      m(5), m(6), m(7),
+      m(6), m(7), m(8),
+      s(2), s(3), s(4),
+      p(2), p(8),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [], [], []];
+    const riichi: readonly boolean[] = [true, true, true, true];
+
+    const chosen = aiChooseDiscard(
+      hand, discards, riichi, [], undefined, 0,
+      valueFocused, [], Wind.Ton, Wind.Ton, false,
+    );
+
+    expect(chosen.suit).not.toBe(Suit.Pin);
+  });
+
+  it('balancer personality keeps the legacy discard choice', () => {
+    const balancer: AiPersonality = { aggression: 2, riskTolerance: 2, meldFrequency: 2, riichiFrequency: 2, handValueFocus: 3 };
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      s(1), s(2), s(3),
+      p(1), p(9),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [p(9)], [], []];
+    const riichi: readonly boolean[] = [false, true, false, false];
+
+    const chosen = aiChooseDiscard(
+      hand, discards, riichi, [], undefined, 0,
+      balancer, [], Wind.Ton, Wind.Ton, false,
+    );
+
+    expect(chosen.suit).toBe(Suit.Pin);
+    expect(chosen.value).toBe(9);
+  });
+
+  it('falls back to old behavior without personality', () => {
+    const hand = [
+      m(1), m(2), m(3),
+      m(4), m(5), m(6),
+      m(7), m(8), m(9),
+      s(1), s(2), s(3),
+      p(1), p(9),
+    ];
+    const discards: readonly (readonly Tile[])[] = [[], [p(9)], [], []];
+    const riichi: readonly boolean[] = [false, true, false, false];
+
+    const chosen = aiChooseDiscard(hand, discards, riichi);
+    // Should pick genbutsu p9
+    expect(chosen.suit).toBe(Suit.Pin);
+    expect(chosen.value).toBe(9);
   });
 });

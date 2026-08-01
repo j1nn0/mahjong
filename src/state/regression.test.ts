@@ -21,6 +21,7 @@ function makePlayer(hand: Tile[], melds: Meld[] = [], points = 25000): PlayerDat
     riichiFuriten: false,
     points,
     wind: Wind.Ton,
+    personality: null,
   };
 }
 

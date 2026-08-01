@@ -51,6 +51,7 @@ function makePlayer(overrides: Partial<PlayerData> = {}): PlayerData {
     riichiFuriten: false,
     points: 25000,
     wind: Wind.Ton,
+    personality: null,
     ...overrides,
   };
 }

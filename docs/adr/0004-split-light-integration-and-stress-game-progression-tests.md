@@ -1,3 +1,7 @@
+---
+status: 完了
+---
+
 # Split light integration and stress game progression tests
 
 Game progression stability is judged by whether east-only matches can finish without illegal phases, stalled turns, ranking corruption, or point-total drift. We keep a small full-game integration suite in the normal test run for fast feedback, and keep larger multi-seed stress checks separate so development tests stay quick while still giving us a heavier regression tool when changing round flow, claims, scoring payments, or computer-player decisions. We do not store a random source in `GameState`; the light integration test exercises the reducer's real round transition path, while the stress driver controls shuffling outside persisted game state for reproducibility.

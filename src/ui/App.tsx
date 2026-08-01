@@ -20,9 +20,12 @@ import { saveGame, loadGame, clearSave } from "../state/persistence.js";
 import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
 import { formatTile, getDoraIndicators } from "../game/tiles.js";
 import { isWinningHand, tilesToCounts, calcShanten } from "../game/agari.js";
-import { type Meld, type Tile, type Discard } from "../game/types.js";
+import { type Meld, type Tile, type Discard, type AiPersonality } from "../game/types.js";
 import { DiscardView, tileColor } from "./DiscardView.js";
 import { KeyLegend } from "./KeyLegend.js";
+import { PersonalitySetup, makeDefaultSlot, resolveSlot, PARAM_KEYS } from "./PersonalitySetup.js";
+import type { SlotConfig } from "./PersonalitySetup.js";
+import { randomPersonality } from "../game/aiPersonality.js";
 
 const AI_DELAY = parseInt(process.env.MAHJONG_AI_DELAY ?? "600", 10);
 
@@ -310,8 +313,17 @@ const App: React.FC = () => {
   const processingRef = useRef(false);
   const turnLogRef = useRef<{ player: number; tile: Tile }[]>([]);
   const prevShowDrawnRef = useRef(false);
-  const [startupMode, setStartupMode] = useState<"loading" | "choose" | "ready">("loading");
+  const [startupMode, setStartupMode] = useState<"loading" | "choose" | "setup" | "ready">("loading");
   const [savedState, setSavedState] = useState<GameState | null>(null);
+  // AI personality setup state
+  const [slots, setSlots] = useState<[SlotConfig, SlotConfig, SlotConfig]>([
+    makeDefaultSlot(),
+    makeDefaultSlot(),
+    makeDefaultSlot(),
+  ]);
+  const [setupSelectedSlot, setSetupSelectedSlot] = useState(0);
+  const [setupShowCustom, setSetupShowCustom] = useState(false);
+  const [setupSelectedParam, setSetupSelectedParam] = useState(0);
   const { stdout } = useStdout();
   const { exit } = useApp();
   const terminalWidth = stdout.columns || 80;
@@ -322,8 +334,7 @@ const App: React.FC = () => {
       setSavedState(normalizeGameState(saved));
       setStartupMode("choose");
     } else {
-      dispatch({ type: "START_GAME" });
-      setStartupMode("ready");
+      setStartupMode("setup");
     }
   }, []);
 
@@ -450,13 +461,165 @@ const App: React.FC = () => {
       }
       if (input === "n" || input === "q") {
         clearSave();
-        dispatch({ type: "START_GAME" });
-        setSelectedIndex(0);
-        setStartupMode("ready");
+        setSlots([makeDefaultSlot(), makeDefaultSlot(), makeDefaultSlot()]);
+        setSetupSelectedSlot(0);
+        setSetupShowCustom(false);
+        setSetupSelectedParam(0);
+        setStartupMode("setup");
         return;
       }
       return;
     }
+
+    if (startupMode === "setup") {
+      if (input === "q") {
+        setStartupMode("choose");
+        return;
+      }
+      if (input === "s") {
+        const personalities: (AiPersonality | null)[] = [null];
+        for (const slot of slots) {
+          const resolved = resolveSlot(slot);
+          if (slot.templateId === 'random') {
+            personalities.push(randomPersonality());
+          } else {
+            personalities.push(resolved);
+          }
+        }
+        dispatch({ type: "START_GAME", personalities });
+        setSelectedIndex(0);
+        setStartupMode("ready");
+        return;
+      }
+      if (input === "r") {
+        setSlots([
+          { templateId: 'custom', customParams: randomPersonality() },
+          { templateId: 'custom', customParams: randomPersonality() },
+          { templateId: 'custom', customParams: randomPersonality() },
+        ]);
+        return;
+      }
+      if (setupShowCustom) {
+        if (key.return || input === "q") {
+          setSetupShowCustom(false);
+          return;
+        }
+        if (key.upArrow) {
+          setSetupSelectedParam((p) => Math.max(0, p - 1));
+          return;
+        }
+        if (key.downArrow) {
+          setSetupSelectedParam((p) => Math.min(PARAM_KEYS.length - 1, p + 1));
+          return;
+        }
+        if (key.leftArrow) {
+          const key_ = PARAM_KEYS[setupSelectedParam]!;
+          setSlots((prev) => {
+            const next = [...prev] as [SlotConfig, SlotConfig, SlotConfig];
+            const slot = next[setupSelectedSlot]!;
+            if (slot.templateId !== 'custom') {
+              next[setupSelectedSlot] = { templateId: 'custom', customParams: resolveSlot(slot) };
+            }
+            next[setupSelectedSlot] = {
+              ...next[setupSelectedSlot]!,
+              customParams: {
+                ...next[setupSelectedSlot]!.customParams,
+                [key_]: Math.max(1, (next[setupSelectedSlot]!.customParams[key_] ?? 3) - 1),
+              },
+            };
+            return next;
+          });
+          return;
+        }
+        if (key.rightArrow) {
+          const key_ = PARAM_KEYS[setupSelectedParam]!;
+          setSlots((prev) => {
+            const next = [...prev] as [SlotConfig, SlotConfig, SlotConfig];
+            const slot = next[setupSelectedSlot]!;
+            if (slot.templateId !== 'custom') {
+              next[setupSelectedSlot] = { templateId: 'custom', customParams: resolveSlot(slot) };
+            }
+            next[setupSelectedSlot] = {
+              ...next[setupSelectedSlot]!,
+              customParams: {
+                ...next[setupSelectedSlot]!.customParams,
+                [key_]: Math.min(5, (next[setupSelectedSlot]!.customParams[key_] ?? 3) + 1),
+              },
+            };
+            return next;
+          });
+          return;
+        }
+        return;
+      }
+      // Template selection mode
+      if (key.upArrow) {
+        setSetupSelectedSlot((s) => Math.max(0, s - 1));
+        return;
+      }
+      if (key.downArrow) {
+        setSetupSelectedSlot((s) => Math.min(2, s + 1));
+        return;
+      }
+      if (key.leftArrow) {
+        setSlots((prev) => {
+          const next = [...prev] as [SlotConfig, SlotConfig, SlotConfig];
+          const slot = next[setupSelectedSlot]!;
+          const templates = [
+            { templateId: 'balancer' },
+            { templateId: 'defensive' },
+            { templateId: 'aggressive' },
+            { templateId: 'handValue' },
+            { templateId: 'meldExpert' },
+            { templateId: 'custom' },
+          ];
+          const currentIdx = templates.findIndex((t) => t.templateId === slot.templateId);
+          const prevIdx = ((currentIdx - 1 + templates.length) % templates.length);
+          const newId = templates[prevIdx]!.templateId;
+          if (newId === 'custom') {
+            next[setupSelectedSlot] = { templateId: 'custom', customParams: resolveSlot(slot) };
+          } else {
+            next[setupSelectedSlot] = { templateId: newId, customParams: slot.customParams };
+          }
+          return next;
+        });
+        return;
+      }
+      if (key.rightArrow) {
+        setSlots((prev) => {
+          const next = [...prev] as [SlotConfig, SlotConfig, SlotConfig];
+          const slot = next[setupSelectedSlot]!;
+          const templates = [
+            { templateId: 'balancer' },
+            { templateId: 'defensive' },
+            { templateId: 'aggressive' },
+            { templateId: 'handValue' },
+            { templateId: 'meldExpert' },
+            { templateId: 'custom' },
+          ];
+          const currentIdx = templates.findIndex((t) => t.templateId === slot.templateId);
+          const nextIdx = (currentIdx + 1) % templates.length;
+          const newId = templates[nextIdx]!.templateId;
+          if (newId === 'custom') {
+            next[setupSelectedSlot] = { templateId: 'custom', customParams: resolveSlot(slot) };
+          } else {
+            next[setupSelectedSlot] = { templateId: newId, customParams: slot.customParams };
+          }
+          return next;
+        });
+        return;
+      }
+      if (key.return) {
+        const slot = slots[setupSelectedSlot]!;
+        if (slot.templateId === 'custom') {
+          setSetupShowCustom(true);
+          setSetupSelectedParam(0);
+        }
+        return;
+      }
+      return;
+    }
+
 
     if (startupMode !== "ready") return;
 
@@ -645,6 +808,18 @@ const App: React.FC = () => {
           <Text color="yellow">N / Q: 新規開始して保存を破棄</Text>
         </Box>
       </Box>
+    );
+  }
+
+
+  if (startupMode === "setup") {
+    return (
+      <PersonalitySetup
+        slots={slots}
+        selectedSlot={setupSelectedSlot}
+        showCustom={setupShowCustom}
+        selectedParam={setupSelectedParam}
+      />
     );
   }
 
