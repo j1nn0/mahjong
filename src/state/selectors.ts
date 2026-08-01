@@ -1,16 +1,12 @@
-import {
-  canDeclareKyuushuKyuuhai,
-  canDeclareRiichi,
-  findWaits,
-  removeOneTile,
-  tileKindKey,
-  turnTileCount,
-} from "./GameState.js";
-import type { GameState } from "./GameState.js";
+import { canDeclareKyuushuKyuuhai, canDeclareRiichi } from "./claimPhase.js";
+import type { GameState } from "./types.js";
 import type { Tile } from "../game/types.js";
 import { MeldType, type Meld } from "../game/types.js";
 import { indexToTile } from "../game/agari.js";
-import { canScoreTsumo } from "./finishRound.js";
+import { removeOneTile, tileKindKey } from "../game/tiles.js";
+import { turnTileCount } from "./players.js";
+import { canScoreTsumo } from "./winScoring.js";
+import { findWaits } from "../game/winValidity.js";
 
 export function getHumanHand(state: GameState): readonly Tile[] {
   return state.players[0].hand;

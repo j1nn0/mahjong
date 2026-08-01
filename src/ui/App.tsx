@@ -1,12 +1,10 @@
 import React, { useReducer, useEffect, useState, useRef } from "react";
 import { Text, Box, useInput, useStdout, useApp } from "ink";
-import {
-  createInitialState,
-  gameReducer,
-  normalizeGameState,
-  processAiTurn,
-  turnTileCount,
-} from "../state/GameState.js";
+import { createInitialState } from "../state/roundSetup.js";
+import { normalizeGameState } from "../state/normalize.js";
+import { gameReducer } from "../state/reducer.js";
+import { turnTileCount } from "../state/players.js";
+import { roundName } from "../state/finishRound.js";
 import {
   canHumanTsumo,
   canHumanRiichi,
@@ -17,7 +15,7 @@ import {
   getHumanHand,
 } from "../state/selectors.js";
 import { saveGame, loadGame, clearSave } from "../state/persistence.js";
-import type { ClaimOption, GameAction, GameState } from "../state/GameState.js";
+import type { ClaimOption, GameAction, GameState } from "../state/types.js";
 import { formatTile, getDoraIndicators } from "../game/tiles.js";
 import { isWinningHand, tilesToCounts, calcShanten } from "../game/agari.js";
 import { type Meld, type Tile, type Discard, type AiPersonality } from "../game/types.js";
@@ -26,8 +24,8 @@ import { KeyLegend } from "./KeyLegend.js";
 import { PersonalitySetup, makeDefaultSlot, resolveSlot, PARAM_KEYS } from "./PersonalitySetup.js";
 import type { SlotConfig } from "./PersonalitySetup.js";
 import { randomPersonality } from "../game/aiPersonality.js";
-
-const AI_DELAY = parseInt(process.env.MAHJONG_AI_DELAY ?? "600", 10);
+import { WIND_NAMES, claimLabel } from "./display.js";
+import { useAiTurn, useAutoDraw } from "./useAiTurn.js";
 
 // ── Display helpers ────────────────────────────────────────────────
 
@@ -182,19 +180,6 @@ const DoraView: React.FC<DoraViewProps> = ({ state }) => {
   );
 };
 
-const claimLabel = (option: ClaimOption): string => {
-  switch (option.type) {
-    case "ron":
-      return "ロン";
-    case "chi":
-      return "チー";
-    case "pon":
-      return "ポン";
-    case "daiminkan":
-      return "カン";
-  }
-};
-
 // ── Opponent info ──────────────────────────────────────────────────
 interface OpponentInfoProps {
   wind: string;
@@ -302,15 +287,10 @@ const ActionBar: React.FC<ActionBarProps> = ({ canTsumo, canRiichi, canKan, canK
 
 // ── Main game component ───────────────────────────────────────────
 
-const WIND_NAMES = ["東", "南", "西", "北"];
-const roundName = (roundNumber: number, roundWind: number = 0) =>
-  `${WIND_NAMES[roundWind] ?? "東"}${roundNumber}局`;
-
 const App: React.FC = () => {
   const [state, dispatch] = useReducer(gameReducer, null, createInitialState);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
-  const processingRef = useRef(false);
   const turnLogRef = useRef<{ player: number; tile: Tile }[]>([]);
   const prevShowDrawnRef = useRef(false);
   const [startupMode, setStartupMode] = useState<"loading" | "choose" | "setup" | "ready">("loading");
@@ -358,20 +338,7 @@ const App: React.FC = () => {
     turnLogRef.current = [...turnLogRef.current.slice(-4), entry];
   }, [state.lastDiscard]);
   // Auto-draw for human
-  useEffect(() => {
-    if (startupMode !== "ready") return;
-    if (state.phase !== "playing") return;
-    if (state.currentPlayer !== 0) return;
-    if (turnTileCount(state.players[0]) === 13) {
-      dispatch({ type: "DRAW", player: 0 });
-    }
-  }, [
-    startupMode,
-    state.currentPlayer,
-    state.phase,
-    state.players[0].hand.length,
-    state.players[0].melds.length,
-  ]);
+  useAutoDraw(state, dispatch, startupMode === "ready");
 
   // Riichi auto-tsumogiri: リーチ中のツモ切り（強制）
   useEffect(() => {
@@ -399,34 +366,7 @@ const App: React.FC = () => {
   ]);
 
   // AI turn processing (ref でレンダリングをトリガしない)
-  useEffect(() => {
-    if (startupMode !== "ready") return;
-    if (state.phase === "ended") return;
-    if (state.phase === "roundEnded") return;
-    if (processingRef.current) return;
-
-    const isAiTurn = state.phase === "playing" && state.currentPlayer !== 0;
-    const isAiClaim = state.phase === "claiming" && !state.claimOptions.some((c) => c.player === 0);
-
-    if (isAiTurn || isAiClaim) {
-      processingRef.current = true;
-      const timer = setTimeout(() => {
-        try {
-          const { action } = processAiTurn(state);
-          processingRef.current = false;
-          if (action) dispatch(action);
-        } catch (err) {
-          processingRef.current = false;
-          const message = err instanceof Error ? err.message : String(err);
-          dispatch({ type: "SET_MESSAGE", message: `AIエラー: ${message}` });
-        }
-      }, AI_DELAY);
-      return () => {
-        clearTimeout(timer);
-        processingRef.current = false;
-      };
-    }
-  }, [state, startupMode]);
+  useAiTurn(state, dispatch, startupMode === "ready");
 
   const hand = getHumanHand(state);
   const drawnIndex = state.lastDrawnTile != null ? hand.indexOf(state.lastDrawnTile) : -1;

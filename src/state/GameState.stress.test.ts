@@ -1,11 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import {
-  gameReducer,
-  dealRound,
-  createInitialState,
-  processAiTurn,
-} from './GameState.js';
-import type { GameState } from './GameState.js';
+import { gameReducer } from './reducer.js';
+import { dealRound, createInitialState } from './roundSetup.js';
+import { processAiTurn } from './aiTurn.js';
+import type { GameState } from './types.js';
 import { isValidFinalRanking, progressionInvariantErrors } from './invariants.js';
 
 function mulberry32(seed: number): () => number {

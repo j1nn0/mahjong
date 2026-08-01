@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { createInitialState, turnTileCount } from "./GameState.js";
-import type { GameState, PlayerData } from "./GameState.js";
+import { createInitialState } from "./roundSetup.js";
+import { turnTileCount } from "./players.js";
+import type { GameState, PlayerData } from "./types.js";
 import { MeldType, Suit, Wind, type Tile, type Meld } from "../game/types.js";
 import {
   canHumanTsumo,

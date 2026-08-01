@@ -1,18 +1,16 @@
 import { describe, it, expect } from "vitest";
+import { gameReducer } from "./reducer.js";
+import { createInitialState } from "./roundSetup.js";
+import { processAiTurn } from "./aiTurn.js";
+import { normalizeGameState } from "./normalize.js";
+import { canDeclareKyuushuKyuuhai, collectClaims, sortClaimsByPriority } from "./claimPhase.js";
 import {
-  gameReducer,
-  createInitialState,
-  collectClaims,
-  sortClaimsByPriority,
-  processAiTurn,
-  normalizeGameState,
-  canDeclareKyuushuKyuuhai,
   applyRonPayment,
   applyDoubleRonPayments,
   rankPlayers,
   finishAbortiveDraw,
-} from "./GameState.js";
-import type { GameState, PlayerData } from "./GameState.js";
+} from "./finishRound.js";
+import type { GameState, PlayerData } from "./types.js";
 import { MeldType, Suit, type AiPersonality, type Tile, type Meld, type Discard, PlayerWind } from "../game/types.js";
 import type { ScoreResult } from "../game/scoring.js";
 import { YakuId } from "../game/yaku.js";
@@ -2714,7 +2712,7 @@ describe("responsibility payment (責任払い)", () => {
       },
     };
 
-    const result = applyRonPayment(players, 0, 1, score, 1);
+    const result = applyRonPayment(players, 0, score);
 
     expect(result.map((player) => player.points)).toEqual([58000, 9000, 9000, 25000]);
   });
@@ -2743,7 +2741,6 @@ describe("responsibility payment (責任払い)", () => {
     const result = applyDoubleRonPayments(
       players,
       [0, 3],
-      1,
       [responsibilityScore, ordinaryScore],
       0,
       1,

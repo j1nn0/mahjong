@@ -356,5 +356,9 @@ _Avoid_: 点数推定, 手役評価
 _Avoid_: 状態導出関数
 
 **ファイル分割**:
-`GameState.ts` を責務ごとに `types.ts`、`finishRound.ts`、`claimPhase.ts`、`reducer.ts` に分割したリファクタリング。元の `GameState.ts` は再エクスポートにより後方互換を保つ。
+`GameState.ts` を責務ごとに分割したリファクタリング。現在は `types.ts`（型）、`players.ts`（プレイヤー操作）、`roundSetup.ts`（配牌・初期状態）、`normalize.ts`（保存復元）、`claimPhase.ts`（鳴き収集・宣言判定）、`finishRound.ts`（局終了・支払い）、`winScoring.ts`（あがり得点導出）、`aiTurn.ts`、`meldActions.ts`、`turnActions.ts`、`winActions.ts`（アクション）、`reducer.ts`（薄い switch）、`selectors.ts`（UI 向け導出）、`persistence.ts`、`invariants.ts` で構成される。バレル再エクスポートはなく、呼び出し側は直接 import する。
 _Avoid_: モジュール分割
+
+**あがり判定**:
+手牌・面子・和了牌からあがり形の成立と待ち牌を判定する純関数群（`isCompleteHand`/`findWaits`/`closedTilesForTsumo`）。`src/game/winValidity.ts` に集約され、state 層は `src/state/winScoring.ts`（`scoreTsumo`/`ronScore`/`canScoreTsumo` など GameState 束縛の得点導出）を経由して使う。
+_Avoid_: 和了判定モジュール

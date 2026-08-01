@@ -1,28 +1,15 @@
-import React, { useReducer, useEffect, useRef, useState } from 'react';
-import { createInitialState, gameReducer, processAiTurn, turnTileCount } from '../state/GameState.js';
-import { getHumanHand } from '../state/selectors.js';
+import React, { useReducer, useEffect, useState } from 'react';
+import { createInitialState } from '../state/roundSetup.js';
+import { gameReducer } from '../state/reducer.js';
+import { turnTileCount } from '../state/players.js';
+import { roundName } from '../state/finishRound.js';
+import { getHumanHand, canHumanTsumo, canHumanRiichi } from '../state/selectors.js';
 import { formatTile, getDoraIndicators } from '../game/tiles.js';
 import { calcShanten } from '../game/agari.js';
-import type { ClaimOption } from '../state/GameState.js';
 import type { Tile } from '../game/types.js';
 import { TileSVG, TileBack } from './Tile.js';
-
-const AI_DELAY = 600;
-
-const WIND_NAMES = ['東', '南', '西', '北'];
-
-const roundName = (roundNumber: number, roundWind: number = 0) =>
-  `${WIND_NAMES[roundWind] ?? '東'}${roundNumber}局`;
-
-const claimLabel = (option: ClaimOption): string => {
-  switch (option.type) {
-    case 'ron': return 'ロン';
-    case 'chi': return 'チー';
-    case 'pon': return 'ポン';
-    case 'daiminkan': return 'カン';
-    default: return '';
-  }
-};
+import { WIND_NAMES, claimLabel } from '../ui/display.js';
+import { useAiTurn, useAutoDraw } from '../ui/useAiTurn.js';
 
 // ── Helpers ──
 
@@ -89,45 +76,12 @@ export const Board: React.FC = () => {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [claimSelectedIndex, setClaimSelectedIndex] = useState(0);
   const [tileSize, setTileSize] = useState(46);
-  const processingRef = useRef(false);
 
   // AI turn processing
-  useEffect(() => {
-    if (state.phase === 'ended') return;
-    if (state.phase === 'roundEnded') return;
-    if (processingRef.current) return;
-
-    const isAiTurn = state.phase === 'playing' && state.currentPlayer !== 0;
-    const isAiClaim = state.phase === 'claiming' && !state.claimOptions.some(c => c.player === 0);
-
-    if (isAiTurn || isAiClaim) {
-      processingRef.current = true;
-      const timer = setTimeout(() => {
-        try {
-          const { action } = processAiTurn(state);
-          processingRef.current = false;
-          if (action) dispatch(action);
-        } catch (err) {
-          processingRef.current = false;
-          const msg = err instanceof Error ? err.message : String(err);
-          dispatch({ type: 'SET_MESSAGE', message: `AIエラー: ${msg}` });
-        }
-      }, AI_DELAY);
-      return () => {
-        clearTimeout(timer);
-        processingRef.current = false;
-      };
-    }
-  }, [state]);
+  useAiTurn(state, dispatch);
 
   // Auto-draw for human
-  useEffect(() => {
-    if (state.phase !== 'playing') return;
-    if (state.currentPlayer !== 0) return;
-    if (turnTileCount(state.players[0]) === 13) {
-      dispatch({ type: 'DRAW', player: 0 });
-    }
-  }, [state.phase, state.currentPlayer, state.players]);
+  useAutoDraw(state, dispatch);
 
   const hand = getHumanHand(state);
   const drawnIndex = state.lastDrawnTile != null ? hand.indexOf(state.lastDrawnTile) : -1;
@@ -236,21 +190,13 @@ export const Board: React.FC = () => {
         setSelectedIndex(0);
         return;
       }
-      if (e.key === 't') {
-        const canTsumo = state.phase === 'playing' && state.currentPlayer === 0 &&
-          turnTileCount(state.players[0]) === 14;
-        if (canTsumo) {
-          dispatch({ type: 'TSUMO', player: 0 });
-          return;
-        }
+      if (e.key === 't' && canHumanTsumo(state)) {
+        dispatch({ type: 'TSUMO', player: 0 });
+        return;
       }
-      if (e.key === 'r') {
-        const canRiichi = !state.players[0].riichi && state.players[0].points >= 1000 &&
-          state.players[0].melds.every(m => m.type === 'closedKan');
-        if (canRiichi) {
-          dispatch({ type: 'DECLARE_RIICHI', player: 0, discardTile: hand[selectedIndex]! });
-          return;
-        }
+      if (e.key === 'r' && canHumanRiichi(state)) {
+        dispatch({ type: 'DECLARE_RIICHI', player: 0, discardTile: hand[selectedIndex]! });
+        return;
       }
     };
     window.addEventListener('keydown', onKey);
@@ -601,7 +547,7 @@ export const Board: React.FC = () => {
         {/* Action buttons */}
         {state.phase === 'playing' && state.currentPlayer === 0 && !state.players[0].riichi && (
           <div style={{ display: 'flex', gap: 8, marginTop: 4, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {(turnTileCount(state.players[0]) === 14) && (
+            {canHumanTsumo(state) && (
               <button style={{
                 padding: '4px 14px',
                 borderRadius: 4,
@@ -615,8 +561,7 @@ export const Board: React.FC = () => {
                 T: ツモ
               </button>
             )}
-            {(!state.players[0].riichi && state.players[0].points >= 1000 &&
-              state.players[0].melds.every(m => m.type === 'closedKan')) && (
+            {canHumanRiichi(state) && (
               <button style={{
                 padding: '4px 14px',
                 borderRadius: 4,

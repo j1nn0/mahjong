@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { gameReducer, createInitialState, type GameState, type PlayerData } from "./GameState.js";
+import { gameReducer } from "./reducer.js";
+import { createInitialState } from "./roundSetup.js";
+import type { GameState, PlayerData } from "./types.js";
 import { MeldType, Suit, Wind, type Tile, type Meld, type Discard } from "../game/types.js";
 
 function m(v: number): Tile {

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { saveGame, loadGame, clearSave } from "./persistence.js";
-import { normalizeGameState } from "./GameState.js";
+import { normalizeGameState } from "./normalize.js";
 
 const SAVE_PATH = path.resolve('.mahjong-save.json');
 

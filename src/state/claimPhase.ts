@@ -1,8 +1,51 @@
 import { type Tile, type Meld, MeldType, Suit } from "../game/types.js";
-import { formatTile, sortHand } from "../game/tiles.js";
+import { formatTile, sortHand, isSameTile, isSameTileKind, isYaochu, tileKindKey } from "../game/tiles.js";
+import { tileToIndex } from "../game/agari.js";
 import type { PlayerData, GameState, ClaimOption, MeldClaimOption } from "./types.js";
-import { isSameTile, isSameTileKind, isFuritenFromOwnDiscards, updPlayer } from "./GameState.js";
-import { isCompleteHand } from "./finishRound.js";
+import { updPlayer, turnTileCount, expectedAfterDraw } from "./players.js";
+import { isCompleteHand, findWaits } from "../game/winValidity.js";
+
+// ── Declaration rules ────────────────────────────────────────────────
+
+/** 九種九牌を宣言できるか */
+export function canDeclareKyuushuKyuuhai(state: GameState, player: number): boolean {
+  if (state.phase !== "playing" || state.currentPlayer !== player || state.firstTurnInterrupted)
+    return false;
+  const playerData = state.players[player];
+  if (playerData.discards.length > 0 || turnTileCount(playerData) !== expectedAfterDraw(playerData))
+    return false;
+  const yaochuKinds = new Set(playerData.hand.filter(isYaochu).map(tileKindKey));
+  return yaochuKinds.size >= 9;
+}
+
+/** リーチを宣言できるか（門前かつ暗槓のみ） */
+export function canDeclareRiichi(player: PlayerData): boolean {
+  return !player.riichi && player.melds.every((meld) => meld.type === MeldType.ClosedKan);
+}
+
+// ── Claim sorting ───────────────────────────────────────────────────
+
+/** 要求を優先度順に並べる（ロン > ポン/カン > チー、同種は捨て主に近い順） */
+export function sortClaimsByPriority(
+  options: readonly ClaimOption[],
+  discarder: number,
+): readonly ClaimOption[] {
+  return [...options].sort((a, b) => {
+    // Ron > pon/kan > chi
+    if (a.type === "ron" && b.type !== "ron") return -1;
+    if (a.type !== "ron" && b.type === "ron") return 1;
+    // Pon/kan > chi (even across different players)
+    const aStrong = a.type === "pon" || a.type === "daiminkan";
+    const bStrong = b.type === "pon" || b.type === "daiminkan";
+    if (aStrong && !bStrong) return -1;
+    if (!aStrong && bStrong) return 1;
+    // Within same type group: turn order (closer to discarder first)
+    const turnOrder = [1, 2, 3];
+    const aOrder = turnOrder.indexOf((a.player - discarder + 4) % 4);
+    const bOrder = turnOrder.indexOf((b.player - discarder + 4) % 4);
+    return aOrder - bOrder;
+  });
+}
 
 // ── Type guard ─────────────────────────────────────────────────────
 
@@ -92,6 +135,14 @@ export function canDaiminkanTile(discarded: Tile, hand: readonly Tile[]): boolea
 }
 
 // ── Collect claims ──────────────────────────────────────────────────
+
+/** 自捨て牌によるフリテンか（テンパイ時のみ） */
+export function isFuritenFromOwnDiscards(player: PlayerData): boolean {
+  if (player.temporaryFuriten || player.riichiFuriten) return true;
+  const waits = new Set(findWaits(player.hand, player.melds));
+  if (waits.size === 0) return false;
+  return player.discards.some((d) => waits.has(tileToIndex(d.tile)));
+}
 
 export function collectClaims(
   discarded: Tile,

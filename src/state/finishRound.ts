@@ -1,27 +1,14 @@
-import { type Tile, type Meld, Suit, Wind } from "../game/types.js";
-import { getDoraIndicators, getUraDoraIndicators } from "../game/tiles.js";
-import { tilesToCounts, isWinningHand } from "../game/agari.js";
-import { decomposeStandardHand } from "../game/yaku.js";
-import { fullScore, type ScoreResult } from "../game/scoring.js";
+import { Suit, Wind } from "../game/types.js";
+import { isSameTileKind, tileKindKey, isYaochu } from "../game/tiles.js";
+import { findWaits } from "../game/winValidity.js";
+import type { ScoreResult } from "../game/scoring.js";
 import type {
   PlayerData,
   DeadWallState,
   GameState,
   AbortiveDrawReason,
-  ClaimOption,
 } from "./types.js";
-import {
-  getResponsibilityInfo,
-  isSameTileKind,
-  tileKindKey,
-  isYaochu,
-  updPlayer,
-  kanCount,
-  emptyCalledDiscardKinds,
-  findWaits,
-  removeOneTile,
-  updatePlayerInTuple,
-} from "./GameState.js";
+import { updPlayer, kanCount, emptyCalledDiscardKinds, updatePlayerInTuple } from "./players.js";
 
 // ── Nagashi Mangan ─────────────────────────────────────────────────
 
@@ -84,12 +71,6 @@ function abortiveDrawMessage(reason: AbortiveDrawReason): string {
 
 // ── Dora helpers ────────────────────────────────────────────────────
 
-/** 現在のstateからドラパラメータを抽出 */
-export const doraParams = (state: GameState) => ({
-  doraIndicators: getDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
-  uraDoraIndicators: getUraDoraIndicators(state.deadWall.tiles, state.deadWall.doraCount),
-});
-
 export function revealKanDora(deadWall: DeadWallState): DeadWallState {
   return {
     ...deadWall,
@@ -140,74 +121,12 @@ export function rankPlayers(
   });
 }
 
-// ── Claim sorting ───────────────────────────────────────────────────
-
-export function sortClaimsByPriority(
-  options: readonly ClaimOption[],
-  discarder: number,
-): readonly ClaimOption[] {
-  return [...options].sort((a, b) => {
-    // Ron > pon/kan > chi
-    if (a.type === "ron" && b.type !== "ron") return -1;
-    if (a.type !== "ron" && b.type === "ron") return 1;
-    // Pon/kan > chi (even across different players)
-    const aStrong = a.type === "pon" || a.type === "daiminkan";
-    const bStrong = b.type === "pon" || b.type === "daiminkan";
-    if (aStrong && !bStrong) return -1;
-    if (!aStrong && bStrong) return 1;
-    // Within same type group: turn order (closer to discarder first)
-    const turnOrder = [1, 2, 3];
-    const aOrder = turnOrder.indexOf((a.player - discarder + 4) % 4);
-    const bOrder = turnOrder.indexOf((b.player - discarder + 4) % 4);
-    return aOrder - bOrder;
-  });
-}
-
-// ── Ron score / payments ────────────────────────────────────────────
-
-export function ronScore(state: GameState, winner: number): ScoreResult | null {
-  if (!state.lastDiscard) return null;
-  const winTile = state.lastDiscard.tile;
-  if (!isCompleteHand(state.players[winner].hand, state.players[winner].melds, winTile)) {
-    return null;
-  }
-  const resp = getResponsibilityInfo(state.players[winner].melds);
-  return fullScore({
-    closedTiles: state.players[winner].hand,
-    melds: state.players[winner].melds,
-    winTile,
-    isTsumo: false,
-    roundWind: state.roundWind,
-    playerSeat: winner,
-    dealer: state.dealer,
-    isRiichi: state.players[winner].riichi,
-    riichiSticks: state.riichiSticks,
-    honba: state.honba,
-    ...doraParams(state),
-    isDoubleRiichi: state.players[winner].doubleRiichi,
-    isIppatsu: state.players[winner].ippatsu,
-    isHaitei: false,
-    isHoutei: !state.lastDiscardWasChankan && state.wall.length === 0,
-    isRinshan: false,
-    isChankan: state.lastDiscardWasChankan,
-    loser: state.lastDiscard.player,
-    ...resp,
-  });
-}
-
-export function ronClaimPlayers(state: GameState): number[] {
-  return sortClaimsByPriority(
-    state.claimOptions.filter((claim) => claim.type === "ron"),
-    state.lastDiscard?.player ?? 0,
-  ).map((claim) => claim.player);
-}
+// ── Ron / tsumo payments ────────────────────────────────────────────
 
 export function applyRonPayment(
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
   winner: number,
-  _discarder: number,
   score: ScoreResult,
-  _riichiSticks: number,
 ): [PlayerData, PlayerData, PlayerData, PlayerData] {
   return players.map((player, i) => {
     if (i === winner) return updPlayer(player, { points: player.points + score.score });
@@ -219,7 +138,6 @@ export function applyRonPayment(
 export function applyDoubleRonPayments(
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
   winners: readonly [number, number],
-  _discarder: number,
   scores: readonly [ScoreResult, ScoreResult],
   riichiReceiver: number,
   riichiSticks: number,
@@ -292,7 +210,6 @@ function applyNagashiManganPayments(
   }
   return { players, scores };
 }
-export { applyNagashiManganPayments };
 
 function nagashiManganWinners(state: GameState): number[] {
   const winners: number[] = [];
@@ -309,7 +226,6 @@ function nagashiManganWinners(state: GameState): number[] {
   }
   return winners;
 }
-export { nagashiManganWinners };
 
 // ── Exhaustive draw ──────────────────────────────────────────────────
 
@@ -321,15 +237,13 @@ export function handleExhaustiveDraw(state: GameState): GameState {
     const names = nagashiWinners
       .map((winner) => (winner === 0 ? "\u3042\u306A\u305F" : `プレイヤー${winner + 1}`))
       .join("\u30FB");
-    return finishRound(
-      state,
-      players,
-      nagashiWinners[0]!,
-      false,
-      nagashiWinners.includes(state.dealer),
-      scores[0]!,
-      `${names}が流し満貫!`,
-    );
+    return finishRound(state, players, {
+      winner: nagashiWinners[0]!,
+      isDraw: false,
+      dealerContinues: nagashiWinners.includes(state.dealer),
+      score: scores[0]!,
+      message: `${names}が流し満貫!`,
+    });
   }
   const tenpaiList: number[] = [];
   const notenList: number[] = [];
@@ -375,30 +289,42 @@ export function handleExhaustiveDraw(state: GameState): GameState {
     tenpaiList.length > 0
       ? `聴牌: ${tenpaiStr}  不聴: ${notenStr || "\u306A\u3057"}`
       : "\u5168\u54E1\u4E0D\u8074";
-  return finishRound(
-    state,
-    newPlayers,
-    null,
-    true,
-    tenpaiList.includes(state.dealer),
-    null,
-    `流局: ${detail}`,
-  );
+  return finishRound(state, newPlayers, {
+    winner: null,
+    isDraw: true,
+    dealerContinues: tenpaiList.includes(state.dealer),
+    score: null,
+    message: `流局: ${detail}`,
+  });
 }
 
 // ── Finish round ─────────────────────────────────────────────────────
 
+export interface FinishRoundOptions {
+  winner: number | null;
+  isDraw: boolean;
+  dealerContinues: boolean;
+  score: ScoreResult | null;
+  message: string;
+  responsibilityMessage?: string;
+  isAbortiveDraw?: boolean;
+}
+
+/** 局を終了し、試合終了判定・供託回収・局進行・履歴を処理する */
 export function finishRound(
   state: GameState,
   players: readonly [PlayerData, PlayerData, PlayerData, PlayerData],
-  winner: number | null,
-  isDraw: boolean,
-  dealerContinues: boolean,
-  score: ScoreResult | null,
-  message: string,
-  responsibilityMessage?: string,
-  isAbortiveDraw?: boolean,
+  options: FinishRoundOptions,
 ): GameState {
+  const {
+    winner,
+    isDraw,
+    dealerContinues,
+    score,
+    message,
+    responsibilityMessage,
+    isAbortiveDraw,
+  } = options;
   const startingDealer = state.startingDealer ?? 0;
   const tempRanking = rankPlayers(players, startingDealer);
   const topPlayer = tempRanking[0]!;
@@ -499,7 +425,7 @@ export function finishRound(
     roundHistory: [
       ...state.roundHistory,
       {
-        roundName: `${["東", "南", "西", "北"][state.roundWind]}${state.roundNumber}局 ${state.honba}本場`,
+        roundName: `${roundName(state.roundNumber, state.roundWind)} ${state.honba}本場`,
         resultText: historyResultText,
         pointChanges: finalPlayers.map((p, i) => p.points - state.players[i].points),
         ...(responsibilityMessage ? { responsibilityMessage } : {}),
@@ -509,60 +435,26 @@ export function finishRound(
 }
 
 export function finishAbortiveDraw(state: GameState, reason: AbortiveDrawReason): GameState {
-  return finishRound(state, state.players, null, true, true, null, abortiveDrawMessage(reason), undefined, true);
+  return finishRound(state, state.players, {
+    winner: null,
+    isDraw: true,
+    dealerContinues: true,
+    score: null,
+    message: abortiveDrawMessage(reason),
+    isAbortiveDraw: true,
+  });
 }
 
-// ── Complete hand check ─────────────────────────────────────────────
+// ── Responsibility info ────────────────────────────────────────────
 
-export function closedTilesForTsumo(hand: readonly Tile[], winTile: Tile): readonly Tile[] {
-  return removeOneTile(hand, winTile);
+/** 局名（例: 東1局） */
+export function roundName(roundNumber: number, roundWind = Wind.Ton): string {
+  const windStr = ["東", "南", "西", "北"][roundWind] ?? "東";
+  return `${windStr}${roundNumber}局`;
 }
 
-export function isCompleteHand(
-  closedTiles: readonly Tile[],
-  melds: readonly Meld[],
-  winTile: Tile,
-  isTsumo = true,
-): boolean {
-  const allClosedTiles = [...closedTiles, winTile];
-  if (melds.length === 0) {
-    return isWinningHand(tilesToCounts(allClosedTiles));
-  }
-  return decomposeStandardHand(allClosedTiles, melds, winTile, isTsumo) !== null;
-}
 
-export function canScoreTsumo(state: GameState, player: number, winTile: Tile): boolean {
-  const playerData = state.players[player];
-  const closedTiles = closedTilesForTsumo(playerData.hand, winTile);
-  if (!isCompleteHand(closedTiles, playerData.melds, winTile)) return false;
-  const resp = getResponsibilityInfo(playerData.melds);
-  return (
-    fullScore({
-      closedTiles,
-      melds: playerData.melds,
-      winTile,
-      isTsumo: true,
-      roundWind: state.roundWind,
-      playerSeat: player,
-      dealer: state.dealer,
-      isRiichi: playerData.riichi,
-      riichiSticks: state.riichiSticks,
-      honba: state.honba,
-      ...doraParams(state),
-      isDoubleRiichi: playerData.doubleRiichi,
-      isIppatsu: playerData.ippatsu,
-      isHaitei: !state.lastDrawWasRinshan && state.wall.length === 0,
-      isHoutei: false,
-      isRinshan: state.lastDrawWasRinshan,
-      isChankan: false,
-      isTenhou:
-        player === state.dealer && !state.firstTurnInterrupted && playerData.discards.length === 0,
-      isChiihou:
-        player !== state.dealer &&
-        !state.firstTurnInterrupted &&
-        playerData.discards.length === 0 &&
-        playerData.melds.length === 0,
-      ...resp,
-    }) !== null
-  );
+/** 責任払いメッセージを生成（表示用） */
+export function formatResponsibilityMessage(responsiblePlayer: number): string {
+  return `責任払い: P${responsiblePlayer + 1}`;
 }

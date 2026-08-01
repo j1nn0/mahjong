@@ -1,4 +1,4 @@
-import { Suit, Wind, Dragon, type Tile } from "./types.js";
+import { Suit, Wind, Dragon, type Tile, type Discard } from "./types.js";
 
 // ── Unicode mapping ──────────────────────────────────────────────
 
@@ -291,4 +291,59 @@ export function getUraDoraIndicators(
   doraCount: number,
 ): readonly Tile[] {
   return deadWall.slice(5, 5 + doraCount);
+}
+
+// ── Tile comparison helpers ────────────────────────────────────────
+
+/** 赤の有無も含めて同一の牌か */
+export function isSameTile(a: Tile, b: Tile): boolean {
+  return a.suit === b.suit && a.value === b.value && (a.red ?? false) === (b.red ?? false);
+}
+
+/** 種類のみ同一か（赤の有無は無視） */
+export function isSameTileKind(a: Tile, b: Tile): boolean {
+  return a.suit === b.suit && a.value === b.value;
+}
+
+/** 牌種のキー文字列 */
+export function tileKindKey(tile: Tile): string {
+  return `${tile.suit}:${tile.value}`;
+}
+
+/** 手牌から1枚取り除く（取り除けない場合はそのまま返す） */
+export function removeOneTile(hand: readonly Tile[], tile: Tile): Tile[] {
+  const idx = hand.findIndex((t) => isSameTile(t, tile));
+  if (idx === -1) return [...hand];
+  return [...hand.slice(0, idx), ...hand.slice(idx + 1)];
+}
+
+/** 手牌から指定種類を count 枚取り除く */
+export function removeTileKind(hand: readonly Tile[], tile: Tile, count: number): Tile[] {
+  let remaining = count;
+  return hand.filter((t) => {
+    if (remaining > 0 && isSameTileKind(t, tile)) {
+      remaining--;
+      return false;
+    }
+    return true;
+  });
+}
+
+/** 手牌中の指定種類の牌をすべて返す */
+export function matchingTileKind(hand: readonly Tile[], tile: Tile): Tile[] {
+  return hand.filter((t) => isSameTileKind(t, tile));
+}
+
+/** 幺九牌か（字牌・1・9） */
+export function isYaochu(tile: Tile): boolean {
+  return (
+    tile.suit === Suit.Wind || tile.suit === Suit.Dragon || tile.value === 1 || tile.value === 9
+  );
+}
+
+/** 河から該当牌1枚を取り除く */
+export function removeDiscardByTile(discards: readonly Discard[], tile: Tile): Discard[] {
+  const idx = discards.findIndex((d) => isSameTile(d.tile, tile));
+  if (idx === -1) return [...discards];
+  return [...discards.slice(0, idx), ...discards.slice(idx + 1)];
 }

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createInitialState, gameReducer } from './GameState.js';
+import { gameReducer } from './reducer.js';
+import { createInitialState } from './roundSetup.js';
 import type { GameState, PlayerData } from './types.js';
 import {
   INITIAL_POINTS_TOTAL,
